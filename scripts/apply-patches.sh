@@ -6,7 +6,7 @@ PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 CHROMIUM_SRC=${1:-}
 SERIES="$PROJECT_DIR/patches/series"
 
-[ -d "$CHROMIUM_SRC/.git" ] || {
+[ -d "$CHROMIUM_SRC/.git" ] || [ -f "$CHROMIUM_SRC/.git" ] || {
   echo "Usage: $0 /absolute/path/to/chromium/src" >&2
   exit 2
 }
