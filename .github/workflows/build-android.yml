@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -107,3 +107,15 @@ jobs:
           path: artifacts/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish installable prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-${{ github.sha }}
+          name: KBrowser CI ${{ github.sha }}
+          prerelease: true
+          make_latest: false
+          files: |
+            artifacts/KBrowser-arm64.apk
+            artifacts/KBrowser-arm64.apk.sha256
+            artifacts/manifest.txt
