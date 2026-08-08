@@ -26,7 +26,7 @@ diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserAct
 new file mode 100644
 --- /dev/null
 +++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,156 @@
 +package org.mozilla.fenix.dualscreen
 +
 +import android.app.Activity
