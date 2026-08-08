@@ -180,6 +180,6 @@ new file mode 100644
 +    fun userScrolled(source: DualScreenBrowserActivity, newLogicalTop: Int) {
 +        logicalTop = newLogicalTop
 +        val peer = if (primary.get() === source) secondary.get() else primary.get()
-+        peer?.runOnUiThread { applyLogicalTop(logicalTop) }
++        peer?.runOnUiThread { peer.applyLogicalTop(logicalTop) }
 +    }
 +}
