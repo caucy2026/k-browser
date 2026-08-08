@@ -62,7 +62,6 @@ new file mode 100644
 +    override fun onCreate(savedInstanceState: Bundle?) {
 +        super.onCreate(savedInstanceState)
 +        requestWindowFeature(Window.FEATURE_NO_TITLE)
-+        enterFullscreen()
 +        isSecondary = intent.getBooleanExtra(EXTRA_SECONDARY, false)
 +        val url = intent.getStringExtra(EXTRA_URL)
 +            ?: intent.data?.getQueryParameter("url")
@@ -75,6 +74,7 @@ new file mode 100644
 +            )
 +        }
 +        setContentView(geckoView)
++        enterFullscreen()
 +
 +        session = GeckoSession().apply {
 +            setScrollDelegate(object : GeckoSession.ScrollDelegate {
