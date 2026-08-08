@@ -1,0 +1,184 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -502,6 +502,20 @@
+             >
+         </activity>
+ 
++        <activity
++            android:name=".dualscreen.DualScreenBrowserActivity"
++            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
++            android:exported="true"
++            android:launchMode="standard"
++            android:resizeableActivity="true"
++            android:theme="@style/NormalTheme">
++            <intent-filter>
++                <action android:name="android.intent.action.VIEW" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <data android:scheme="kbrowser-dual" />
++            </intent-filter>
++        </activity>
++
+         <activity
+             android:name=".HomeActivity"
+             android:theme="@style/SplashScreenThemeBase"
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -0,0 +1,155 @@
++package org.mozilla.fenix.dualscreen
++
++import android.app.Activity
++import android.app.ActivityOptions
++import android.content.Context
++import android.content.Intent
++import android.hardware.display.DisplayManager
++import android.os.Bundle
++import android.view.Display
++import android.view.View
++import android.view.ViewGroup
++import android.view.Window
++import android.view.WindowInsets
++import android.view.WindowInsetsController
++import org.mozilla.fenix.ext.components
++import org.mozilla.geckoview.GeckoSession
++import org.mozilla.geckoview.GeckoView
++import org.mozilla.geckoview.PanZoomController
++import org.mozilla.geckoview.ScreenLength
++import java.lang.ref.WeakReference
++import kotlin.math.roundToInt
++
++/**
++ * Two Gecko sessions form one continuous 1920 x 2560 browsing surface.
++ * Display 0 shows pageTop; the secondary display shows pageTop + one viewport.
++ */
++class DualScreenBrowserActivity : Activity() {
++    private lateinit var geckoView: GeckoView
++    private lateinit var session: GeckoSession
++    private var isSecondary = false
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        requestWindowFeature(Window.FEATURE_NO_TITLE)
++        enterFullscreen()
++        isSecondary = intent.getBooleanExtra(EXTRA_SECONDARY, false)
++        val url = intent.getStringExtra(EXTRA_URL)
++            ?: intent.data?.getQueryParameter("url")
++            ?: DEFAULT_URL
++
++        geckoView = GeckoView(this).apply {
++            layoutParams = ViewGroup.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.MATCH_PARENT,
++            )
++        }
++        setContentView(geckoView)
++
++        session = GeckoSession().apply {
++            setCompositorScrollDelegate(object : GeckoSession.CompositorScrollDelegate {
++                override fun onScrollChanged(
++                    session: GeckoSession,
++                    update: GeckoSession.ScrollPositionUpdate,
++                ) {
++                    if (update.source != GeckoSession.ScrollPositionUpdate.SOURCE_USER_INTERACTION) return
++                    val localScreenY = (update.scrollY * update.zoom).roundToInt()
++                    val logicalTop = localScreenY - if (isSecondary) geckoView.height else 0
++                    DualScreenCoordinator.userScrolled(
++                        this@DualScreenBrowserActivity,
++                        logicalTop.coerceAtLeast(0),
++                    )
++                }
++            })
++            open(components.core.geckoRuntime)
++        }
++        geckoView.setSession(session)
++        DualScreenCoordinator.attach(this)
++        session.loadUri(url)
++        geckoView.post { DualScreenCoordinator.surfaceReady(this) }
++        if (!isSecondary) launchSecondary(url)
++    }
++
++    override fun onDestroy() {
++        DualScreenCoordinator.detach(this)
++        geckoView.releaseSession()
++        session.close()
++        super.onDestroy()
++    }
++
++    fun applyLogicalTop(logicalTop: Int) {
++        val localY = logicalTop + if (isSecondary) geckoView.height else 0
++        session.panZoomController.scrollTo(
++            ScreenLength.zero(),
++            ScreenLength.fromPixels(localY.toDouble()),
++            PanZoomController.SCROLL_BEHAVIOR_AUTO,
++        )
++    }
++
++    private fun launchSecondary(url: String) {
++        val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
++        val secondary = manager.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
++            ?: return
++        val launchIntent = Intent(this, DualScreenBrowserActivity::class.java).apply {
++            putExtra(EXTRA_SECONDARY, true)
++            putExtra(EXTRA_URL, url)
++            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
++        }
++        val options = ActivityOptions.makeBasic().apply {
++            launchDisplayId = secondary.displayId
++        }
++        startActivity(launchIntent, options.toBundle())
++    }
++
++    private fun enterFullscreen() {
++        window.setDecorFitsSystemWindows(false)
++        window.insetsController?.apply {
++            hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
++            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
++        }
++        @Suppress("DEPRECATION")
++        window.decorView.systemUiVisibility =
++            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
++                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
++                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
++    }
++
++    companion object {
++        const val EXTRA_URL = "url"
++        const val EXTRA_SECONDARY = "secondary"
++        const val DEFAULT_URL = "https://example.com/"
++    }
++}
++
++private object DualScreenCoordinator {
++    private var primary = WeakReference<DualScreenBrowserActivity>(null)
++    private var secondary = WeakReference<DualScreenBrowserActivity>(null)
++    private var logicalTop = 0
++
++    @Synchronized
++    fun attach(activity: DualScreenBrowserActivity) {
++        val second = activity.intent.getBooleanExtra(
++            DualScreenBrowserActivity.EXTRA_SECONDARY,
++            false,
++        )
++        if (second) secondary = WeakReference(activity) else primary = WeakReference(activity)
++    }
++
++    @Synchronized
++    fun detach(activity: DualScreenBrowserActivity) {
++        if (primary.get() === activity) primary.clear()
++        if (secondary.get() === activity) secondary.clear()
++    }
++
++    @Synchronized
++    fun surfaceReady(activity: DualScreenBrowserActivity) {
++        activity.applyLogicalTop(logicalTop)
++    }
++
++    @Synchronized
++    fun userScrolled(source: DualScreenBrowserActivity, newLogicalTop: Int) {
++        logicalTop = newLogicalTop
++        val peer = if (primary.get() === source) secondary.get() else primary.get()
++        peer?.runOnUiThread { applyLogicalTop(logicalTop) }
++    }
++}

@@ -204,7 +204,19 @@ feat: split one compositor frame across displays
 
 ## 7. 当前下一步
 
-1. 完成 M0 真机预检。
-2. 固定 Iceraven 子模块提交。
-3. 在 GitHub Actions 构建未修改的 arm64 APK。
-4. 下载 APK 并完成真机启动冒烟。
+1. GitHub Actions 编译包含双屏 Gecko 模式的 arm64 APK。
+2. 下载并安装到 `192.168.3.62`。
+3. 使用以下命令打开长网页：
+
+```bash
+.tools/platform-tools/adb -s 192.168.3.62:5555 shell am start \
+  --display 0 -n org.mozilla.fenix/.dualscreen.DualScreenBrowserActivity \
+  --es url https://en.wikipedia.org/wiki/Web_browser
+```
+
+4. 分别在主屏、副屏拖动一次，确认另一屏同步滚动。
+5. 各抓取一张截图并运行 `scripts/check-activity-displays.sh` 闭环。
+
+当前原型使用两个共享 GeckoRuntime 的 GeckoSession；它不是系统 WebView。两屏共享
+Cookie 和逻辑滚动位置，副屏位置恒为主屏位置加一个屏幕高度。后续 M5 再把两个页面
+实例替换为单页面双 Surface，解决视频、Canvas 和页面内部瞬时状态重复的问题。
