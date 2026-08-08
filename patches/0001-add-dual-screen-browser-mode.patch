@@ -26,7 +26,7 @@ diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserAct
 new file mode 100644
 --- /dev/null
 +++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,157 @@
 +package org.mozilla.fenix.dualscreen
 +
 +import android.app.Activity
@@ -52,6 +52,7 @@ new file mode 100644
 + * Two Gecko sessions form one continuous 1920 x 2560 browsing surface.
 + * Display 0 shows pageTop; the secondary display shows pageTop + one viewport.
 + */
++@Suppress("DEPRECATION")
 +class DualScreenBrowserActivity : Activity() {
 +    private lateinit var geckoView: GeckoView
 +    private lateinit var session: GeckoSession
