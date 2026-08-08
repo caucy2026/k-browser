@@ -76,8 +76,14 @@ jobs:
         env:
           GRADLE_OPTS: -Dorg.gradle.jvmargs="-XX:MaxMetaspaceSize=2g -Xms1g -Xmx6g -XX:+HeapDumpOnOutOfMemoryError"
         run: |
+          set -o pipefail
           VERSION_NAME="$(git describe --tags --always)"
-          ./gradlew app:assembleForkRelease -PversionName="$VERSION_NAME" --stacktrace --no-daemon
+          ./gradlew app:assembleForkRelease -PversionName="$VERSION_NAME" --stacktrace --no-daemon 2>&1 | tee ../compile.log || {
+            grep -E '(^e: | error: |What went wrong|Unresolved reference|Cannot access|overrides nothing)' ../compile.log \
+              | tail -80 \
+              | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          }
 
       - name: Collect candidate
         shell: bash
