@@ -100,6 +100,7 @@
 
 工作：
 
+- 默认桌面图标必须直接启动双屏 Activity，不能依赖 ADB 或专用 URI。
 - 主 Activity 固定 Display 0。
 - 副屏 Activity 通过 `setLaunchDisplayId(2)` 启动。
 - 副屏使用 `singleInstance`，两屏进入沉浸全屏。
@@ -113,6 +114,14 @@
 ```
 
 通过条件：两块屏各有一个全屏窗口，显示 ID 正确，返回后没有孤立副屏窗口。
+
+桌面启动闭环必须使用与用户一致的入口，禁止仅用组件名启动代替验收：
+
+```bash
+adb shell monkey -p io.github.forkmaintainers.iceraven -c android.intent.category.LAUNCHER 1
+```
+
+通过条件：解析出的 launcher 目标为 `DualScreenBrowserActivity`，Display 0/2 各有一个实例。
 
 ### M4：双页面同步原型
 

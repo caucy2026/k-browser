@@ -1,6 +1,14 @@
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
 --- a/app/src/main/AndroidManifest.xml
 +++ b/app/src/main/AndroidManifest.xml
+@@ -87,6 +87,6 @@
+         <activity-alias
+             android:name="${applicationId}.App"
+             android:exported="true"
+-            android:targetActivity="HomeActivity">
++            android:targetActivity=".dualscreen.DualScreenBrowserActivity">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
 @@ -502,6 +502,20 @@
              >
          </activity>
