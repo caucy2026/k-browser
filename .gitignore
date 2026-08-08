@@ -1,0 +1,11 @@
+.DS_Store
+/.tools/
+/kemi-rd/
+/config/device.local.env
+/out/
+/src/
+/depot_tools/
+/*.apk
+/artifacts/
+/logs/
+/upstream/

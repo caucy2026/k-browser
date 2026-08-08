@@ -1,0 +1,87 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: kbrowser-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUILD_DIR: /home/lg/working_dir/chromium/src/out/kbrowser-arm64
+
+jobs:
+  validate:
+    name: Validate candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell and pinned upstream
+        shell: bash
+        run: |
+          for script in scripts/*.sh; do sh -n "$script"; done
+          ./scripts/check-ci-config.sh
+
+  build:
+    name: Build arm64 APK
+    needs: validate
+    runs-on: [self-hosted, linux, x64, chromium]
+    timeout-minutes: 1440
+    container:
+      image: uazo/cromite-build:148.0.7778.16-7cde6f6d28744d435fce373e312fa7d713bebca4
+      env:
+        HOME: /home/lg/working_dir
+        WORKSPACE: /home/lg/working_dir
+      volumes:
+        - /storage/kbrowser/out:/home/lg/working_dir/chromium/src/out
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify container identity
+        shell: bash
+        run: ./scripts/check-ci-config.sh
+
+      - name: Apply KBrowser patches
+        shell: bash
+        run: |
+          "$GITHUB_WORKSPACE/scripts/apply-patches.sh" "$WORKSPACE/chromium/src"
+
+      - name: Generate arm64 build
+        shell: bash
+        run: |
+          export PATH="$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools:$PATH"
+          cd "$WORKSPACE/chromium/src"
+          gn gen "$BUILD_DIR" --args="target_os=\"android\" target_cpu=\"arm64\" $(cat "$WORKSPACE/cromite/build/cromite.gn_args")"
+
+      - name: Compile APK
+        shell: bash
+        run: |
+          export PATH="$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools:$PATH"
+          cd "$WORKSPACE/chromium/src"
+          vpython3 "$WORKSPACE/depot_tools/siso.py" ninja -C "$BUILD_DIR" chrome_public_apk --offline
+
+      - name: Collect candidate
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp "$BUILD_DIR/apks/ChromePublic.apk" artifacts/KBrowser-arm64.apk
+          sha256sum artifacts/KBrowser-arm64.apk > artifacts/KBrowser-arm64.apk.sha256
+          printf '%s\n' "repository=$GITHUB_REPOSITORY" "commit=$GITHUB_SHA" > artifacts/manifest.txt
+          cat build/upstream.env >> artifacts/manifest.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KBrowser-arm64-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14

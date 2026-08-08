@@ -1,0 +1,2 @@
+# One patch path per line, relative to the repository root.
+# Patches are applied in order by scripts/apply-patches.sh.

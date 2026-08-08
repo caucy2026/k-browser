@@ -1,0 +1,210 @@
+# KBrowser 轻量闭环开发流程
+
+## 1. 目标与边界
+
+### 最终目标
+
+- 基于开源 Chromium Android 完整浏览器，不使用 WebView 壳作为最终产品。
+- 普通模式具备地址栏、标签页、下载、文件上传、权限和 Cookie 等浏览器能力。
+- 双屏模式启动 Display 2，并让一个网页形成 `1920 x 2560` 连续逻辑视口。
+- Display 0 显示逻辑区域 `y=0..1279`，Display 2 显示 `y=1280..2559`。
+- 两屏共享同一个页面、JavaScript 上下文、滚动状态和登录状态。
+- 两屏触摸统一映射到连续逻辑坐标。
+
+### 首版不做
+
+- Google 账号同步。
+- Widevine DRM 与 Netflix 等受保护内容承诺。
+- 大规模 Web Platform Tests。
+- 全机型适配；首版只保证当前 KEMI Android 12 真机。
+- 一开始就做完整 Chromium compositor 改造。
+
+## 2. 效率原则
+
+1. 每一步只解决一个风险。
+2. 每一步必须有一条可重复命令和明确的通过条件。
+3. 当前闭环未通过，不进入下一阶段。
+4. 优先真机冒烟，避免重型自动化测试。
+5. 双屏框架与 Chromium 内核改造分开验证。
+6. 先实现可丢弃原型，再进入单页面双 Surface 正式实现。
+
+## 3. 固定设备基线
+
+| 项目 | 基线 |
+|---|---|
+| ADB | 由本地 `config/device.local.env` 提供，不提交到 Git |
+| Android | 12 / API 31 |
+| ABI | arm64-v8a |
+| GPU | Mali-G52 / OpenGL ES 3.2 |
+| RAM | 约 6 GB |
+| 主屏 | Display 0，1920 x 1280，60Hz |
+| 副屏 | Display 2，1920 x 1280，60Hz |
+| 目标逻辑视口 | 1920 x 2560 |
+
+注意：副屏硬件存在 180 度方向配置，Android 当前已经提供逻辑坐标补偿。应用层必须通过触摸测试确认后再决定是否变换，禁止重复旋转。
+
+## 4. 阶段与闭环
+
+### M0：开发入口与真机基线
+
+工作：
+
+- 固定项目目录、ADB 路径和设备地址。
+- 自动检测 Android、ABI、内存、GPU、Display 0/2、分辨率和显示状态。
+- 保存可重复运行的基线命令。
+
+检测：
+
+```bash
+./scripts/check-device.sh
+```
+
+通过条件：脚本退出码为 0，并打印 `DEVICE CHECK PASSED`。
+
+### M1：原版 Chromium APK
+
+工作：
+
+- 在 Linux x86_64 构建机固定 Chromium 稳定提交。
+- 仅构建 arm64 `chrome_public_apk`。
+- 不修改双屏逻辑，先得到可安装 APK。
+
+检测：
+
+```bash
+./scripts/install-apk.sh /absolute/path/to/chrome_public_apk.apk
+./scripts/smoke-package.sh org.chromium.chrome
+```
+
+通过条件：安装成功、主 Activity 在 Display 0、进程存活、无启动崩溃。
+
+### M2：KBrowser 产品壳
+
+工作：
+
+- 修改包名、名称、图标和默认主页。
+- 保留地址栏、标签页、下载、文件上传和网站权限。
+- 禁用不可用的 Google 服务入口。
+
+轻量测试：
+
+- 打开一个 HTTPS 页面。
+- 输入搜索词并跳转。
+- 打开第二个标签再切回。
+- 下载一个小文件。
+- 上传一个小文件。
+
+通过条件：五项人工冒烟全部通过，logcat 无崩溃。
+
+### M3：双屏 Activity 骨架
+
+工作：
+
+- 主 Activity 固定 Display 0。
+- 副屏 Activity 通过 `setLaunchDisplayId(2)` 启动。
+- 副屏使用 `singleInstance`，两屏进入沉浸全屏。
+- 先显示坐标网格，不接 Chromium 页面。
+- 处理副屏缺失、重建、HOME、返回和误启动重定向。
+
+检测：
+
+```bash
+./scripts/check-activity-displays.sh cn.newlink.kbrowser
+```
+
+通过条件：两块屏各有一个全屏窗口，显示 ID 正确，返回后没有孤立副屏窗口。
+
+### M4：双页面同步原型
+
+工作：
+
+- 两屏临时使用两个页面实例。
+- 同步 URL、Cookie、缩放和滚动位置。
+- 副屏逻辑滚动偏移为主屏加 1280。
+- 此实现只用于验证交互，验证完成后可替换。
+
+轻量测试页面：
+
+- 静态长页面：验证接缝连续。
+- 百度或 Bing：验证输入和导航。
+- Bilibili 或 YouTube：验证视频播放。
+- GitHub：验证复杂页面和登录 Cookie。
+
+通过条件：静态页面接缝正确，四类冒烟页面可用；允许动画不同步，但不得崩溃。
+
+### M5：单页面双 Surface
+
+工作：
+
+- 一个网页实例使用 `1920 x 2560` 逻辑视口。
+- Chromium compositor 的同一帧裁切输出到两个 Android Surface。
+- 主屏取上半区域，副屏取下半区域。
+- 副屏输入事件映射到连续坐标空间。
+- 两屏共享焦点、选择、缩放和滚动状态。
+
+分步闭环：
+
+1. 静态色块跨屏位置正确。
+2. 静态长网页接缝正确。
+3. 单指滚动连续。
+4. 点击和长按坐标正确。
+5. 输入框和软键盘可用。
+6. 视频与 Canvas 不重复执行。
+
+通过条件：以上六项逐项通过；每次只排查当前项。
+
+### M6：轻量网站回归与交付
+
+只保留六个代表场景：
+
+| 场景 | 建议站点 | 验证点 |
+|---|---|---|
+| 搜索 | 百度/Bing | 输入、跳转 |
+| 视频 | Bilibili/YouTube | 播放、全屏、声音 |
+| 电商 | 京东 | 图片懒加载、复杂脚本 |
+| 社区 | 知乎 | 无限滚动、弹层 |
+| 开发 | GitHub | 登录、编辑器、复制 |
+| 图形 | 百度/高德地图 | WebGL、缩放、拖动 |
+
+每个场景只检查：加载、滚动、点击、输入、双屏接缝、无崩溃。总测试时间控制在 30 分钟以内。
+
+## 5. 每次改动的统一闭环
+
+```text
+修改一个目标
+  -> 编译相关最小目标
+  -> 安装覆盖
+  -> 清理 logcat
+  -> 执行一个对应场景
+  -> 检查窗口/截图/logcat
+  -> 记录通过或失败原因
+```
+
+禁止把多个未验证的底层改动堆积后一次测试。
+
+## 6. 提交要求
+
+每个提交必须包含：
+
+- 一个明确目标。
+- 一条验证命令。
+- 实际验证结果。
+- 若为真机 UI 改动，至少保留 Display 0 和 Display 2 的截图路径。
+
+推荐提交顺序：
+
+```text
+build: bootstrap Chromium arm64 build
+feat: add KBrowser branding and package
+feat: launch secondary activity on display 2
+test: add dual-display activity smoke check
+prototype: synchronize dual browser tabs
+feat: split one compositor frame across displays
+```
+
+## 7. 当前下一步
+
+1. 完成 M0 真机预检。
+2. 准备 Linux Chromium 构建机。
+3. 固定 Chromium 稳定版本。
+4. 构建未修改的 arm64 `chrome_public_apk`。
