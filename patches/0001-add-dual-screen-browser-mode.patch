@@ -26,7 +26,7 @@ diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserAct
 new file mode 100644
 --- /dev/null
 +++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,165 @@
 +package org.mozilla.fenix.dualscreen
 +
 +import android.app.Activity
@@ -77,6 +77,14 @@ new file mode 100644
 +        enterFullscreen()
 +
 +        session = GeckoSession().apply {
++            setProgressDelegate(object : GeckoSession.ProgressDelegate {
++                override fun onPageStop(session: GeckoSession, success: Boolean) {
++                    if (success) {
++                        geckoView.post { DualScreenCoordinator.surfaceReady(this@DualScreenBrowserActivity) }
++                    }
++                }
++            })
++
 +            setScrollDelegate(object : GeckoSession.ScrollDelegate {
 +                override fun onScrollChanged(session: GeckoSession, scrollX: Int, scrollY: Int) {
 +                    val expected = lastAppliedLocalY
