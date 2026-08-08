@@ -16,9 +16,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  BUILD_DIR: /home/lg/working_dir/chromium/src/out/kbrowser-arm64
-
 jobs:
   validate:
     name: Validate candidate
@@ -35,46 +32,55 @@ jobs:
   build:
     name: Build arm64 APK
     needs: validate
-    runs-on: [self-hosted, linux, x64, chromium]
-    timeout-minutes: 1440
-    container:
-      image: uazo/cromite-build:148.0.7778.16-7cde6f6d28744d435fce373e312fa7d713bebca4
-      env:
-        HOME: /home/lg/working_dir
-        WORKSPACE: /home/lg/working_dir
-      volumes:
-        - /storage/kbrowser/out:/home/lg/working_dir/chromium/src/out
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
-      - name: Verify container identity
-        shell: bash
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Validate candidate
         run: ./scripts/check-ci-config.sh
 
-      - name: Apply KBrowser patches
-        shell: bash
-        run: |
-          "$GITHUB_WORKSPACE/scripts/apply-patches.sh" "$WORKSPACE/chromium/src"
+      - name: Install required Android SDK pieces
+        working-directory: browser
+        run: ./automation/iceraven/install-sdk.sh
 
-      - name: Generate arm64 build
+      - name: Prepare upstream and KBrowser patches
         shell: bash
         run: |
-          export PATH="$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools:$PATH"
-          cd "$WORKSPACE/chromium/src"
-          gn gen "$BUILD_DIR" --args="target_os=\"android\" target_cpu=\"arm64\" $(cat "$WORKSPACE/cromite/build/cromite.gn_args")"
+          (cd browser && ./automation/iceraven/patch_android_components.sh)
+          ./scripts/apply-patches.sh "$GITHUB_WORKSPACE/browser"
+          printf '%s\n' 'autosignReleaseWithDebugKey=' > browser/local.properties
 
-      - name: Compile APK
+      - name: Apply Iceraven resource branding
         shell: bash
+        working-directory: browser
         run: |
-          export PATH="$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools:$PATH"
-          cd "$WORKSPACE/chromium/src"
-          vpython3 "$WORKSPACE/depot_tools/siso.py" ninja -C "$BUILD_DIR" chrome_public_apk --offline
+          sed -i 's/Firefox/Iceraven/g' app/src/*/res/values*/*strings.xml
+          sed -i '/about_content/s/Mozilla/@forkmaintainers/' app/src/*/res/values*/*strings.xml
+          sed -i '/<string name="trackers_blocked_panel_categorical_num_trackers_blocked">/s/%s/%1$s/g; /<string name="trackers_blocked_panel_categorical_num_trackers_blocked">/s/%d/%2$d/g' app/src/*/res/values*/*strings.xml
+
+      - name: Compile release APKs
+        shell: bash
+        working-directory: browser
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-XX:MaxMetaspaceSize=2g -Xms1g -Xmx6g -XX:+HeapDumpOnOutOfMemoryError"
+        run: |
+          VERSION_NAME="$(git describe --tags --always)"
+          ./gradlew app:assembleForkRelease -PversionName="$VERSION_NAME" --stacktrace --no-daemon
 
       - name: Collect candidate
         shell: bash
         run: |
           mkdir -p artifacts
-          cp "$BUILD_DIR/apks/ChromePublic.apk" artifacts/KBrowser-arm64.apk
+          cp browser/gradle/build/app/outputs/apk/forkRelease/app-arm64-v8a-forkRelease.apk artifacts/KBrowser-arm64.apk
           sha256sum artifacts/KBrowser-arm64.apk > artifacts/KBrowser-arm64.apk.sha256
           printf '%s\n' "repository=$GITHUB_REPOSITORY" "commit=$GITHUB_SHA" > artifacts/manifest.txt
           cat build/upstream.env >> artifacts/manifest.txt

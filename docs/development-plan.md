@@ -4,7 +4,7 @@
 
 ### 最终目标
 
-- 基于开源 Chromium Android 完整浏览器，不使用 WebView 壳作为最终产品。
+- 基于开源 Iceraven/Fenix 完整浏览器和独立 GeckoView 引擎，不使用系统 WebView。
 - 普通模式具备地址栏、标签页、下载、文件上传、权限和 Cookie 等浏览器能力。
 - 双屏模式启动 Display 2，并让一个网页形成 `1920 x 2560` 连续逻辑视口。
 - Display 0 显示逻辑区域 `y=0..1279`，Display 2 显示 `y=1280..2559`。
@@ -61,19 +61,19 @@
 
 通过条件：脚本退出码为 0，并打印 `DEVICE CHECK PASSED`。
 
-### M1：原版 Chromium APK
+### M1：原版 Iceraven/Fenix APK
 
 工作：
 
-- 在 Linux x86_64 构建机固定 Chromium 稳定提交。
-- 仅构建 arm64 `chrome_public_apk`。
+- 以 Git submodule 固定 Iceraven 稳定提交。
+- 在 GitHub `ubuntu-latest` 上构建 `app:assembleForkRelease`。
 - 不修改双屏逻辑，先得到可安装 APK。
 
 检测：
 
 ```bash
-./scripts/install-apk.sh /absolute/path/to/chrome_public_apk.apk
-./scripts/smoke-package.sh org.chromium.chrome
+./scripts/install-apk.sh /absolute/path/to/KBrowser-arm64.apk
+./scripts/smoke-package.sh io.github.forkmaintainers.iceraven
 ```
 
 通过条件：安装成功、主 Activity 在 Display 0、进程存活、无启动崩溃。
@@ -205,6 +205,6 @@ feat: split one compositor frame across displays
 ## 7. 当前下一步
 
 1. 完成 M0 真机预检。
-2. 准备 Linux Chromium 构建机。
-3. 固定 Chromium 稳定版本。
-4. 构建未修改的 arm64 `chrome_public_apk`。
+2. 固定 Iceraven 子模块提交。
+3. 在 GitHub Actions 构建未修改的 arm64 APK。
+4. 下载 APK 并完成真机启动冒烟。

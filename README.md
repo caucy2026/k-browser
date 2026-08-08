@@ -1,6 +1,6 @@
 # KBrowser
 
-KBrowser 是面向 KEMI 双屏 Android 设备的 Cromite/Chromium 浏览器移植项目。
+KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植项目。
 
 目标是在 Display 0 与 Display 2 上把同一个网页呈现为连续的
 `1920 x 2560` 逻辑视口，并保留完整浏览器能力，而不是依赖系统 WebView。
@@ -10,7 +10,7 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Cromite/Chromium 浏览器移�
 - 已确认目标设备为 Android 12 / arm64。
 - Display 0 与 Display 2 均为 `1920 x 1280 @ 60Hz`。
 - 已建立可重复执行的真机预检闭环。
-- 已固定 Cromite/Chromium 上游版本，使用 GitHub Actions + Chromium 自托管 runner 构建。
+- 已固定 Iceraven/Fenix 上游提交，使用免费 GitHub 托管 runner 构建。
 
 ## 快速验证
 
@@ -22,6 +22,6 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Cromite/Chromium 浏览器移�
 
 ## CI 架构
 
-- 普通 GitHub runner：校验脚本、上游版本和补丁队列。
-- `self-hosted, linux, x64, chromium` runner：使用固定 Cromite 构建镜像编译 arm64 APK。
+- 第一个 job：校验脚本、上游提交和补丁队列。
+- 第二个 job：JDK 17 + Android SDK + Gradle 编译 arm64 APK。
 - APK、SHA-256 与构建 manifest 作为 Actions artifact 保存 14 天。

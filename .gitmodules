@@ -1,0 +1,4 @@
+[submodule "browser"]
+	path = browser
+	url = https://github.com/fork-maintainers/iceraven-browser.git
+	branch = iceraven
