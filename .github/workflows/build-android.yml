@@ -97,6 +97,18 @@ jobs:
           test -n "$APK_PATH"
           echo "Collecting $APK_PATH"
           cp "$APK_PATH" artifacts/KBrowser-arm64.apk
+          keytool -genkeypair -noprompt \
+            -keystore /tmp/kbrowser-ci-test.jks \
+            -storepass android -keypass android \
+            -alias kbrowser-test -dname "CN=KBrowser CI Test" \
+            -keyalg RSA -keysize 2048 -validity 10000
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" sign \
+            --ks /tmp/kbrowser-ci-test.jks \
+            --ks-pass pass:android --key-pass pass:android \
+            artifacts/KBrowser-arm64.apk
+          "$APKSIGNER" verify --verbose artifacts/KBrowser-arm64.apk
           sha256sum artifacts/KBrowser-arm64.apk > artifacts/KBrowser-arm64.apk.sha256
           printf '%s\n' "repository=$GITHUB_REPOSITORY" "commit=$GITHUB_SHA" > artifacts/manifest.txt
           cat build/upstream.env >> artifacts/manifest.txt
