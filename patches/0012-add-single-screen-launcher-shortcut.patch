@@ -1,0 +1,55 @@
+diff --git a/app/src/forkRelease/res/drawable/ic_static_shortcut_single_screen.xml b/app/src/forkRelease/res/drawable/ic_static_shortcut_single_screen.xml
+new file mode 100644
+index 0000000..f577ddd
+--- /dev/null
++++ b/app/src/forkRelease/res/drawable/ic_static_shortcut_single_screen.xml
+@@ -0,0 +1,17 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- A compact blue single-display mark for the launcher long-press shortcut. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++    <path
++        android:fillColor="#1769E0"
++        android:pathData="M0,0h108v108h-108z" />
++    <path
++        android:fillColor="#FFFFFF"
++        android:pathData="M25,28c-3.31,0 -6,2.69 -6,6v35c0,3.31 2.69,6 6,6h25v6h-12v7h32v-7h-12v-6h25c3.31,0 6,-2.69 6,-6v-35c0,-3.31 -2.69,-6 -6,-6zM27,36h54v31h-54z" />
++    <path
++        android:fillColor="#8FD3FF"
++        android:pathData="M32,41h44v21h-44z" />
++</vector>
+diff --git a/app/src/forkRelease/res/values/static_strings.xml b/app/src/forkRelease/res/values/static_strings.xml
+index bc2abe7..7bb5249 100644
+--- a/app/src/forkRelease/res/values/static_strings.xml
++++ b/app/src/forkRelease/res/values/static_strings.xml
+@@ -5,4 +5,5 @@
+ <resources>
+     <!-- Name of the application -->
+     <string name="app_name" translatable="false">双屏浏览器</string>
++    <string name="home_screen_shortcut_single_screen" translatable="false">单屏模式</string>
+ </resources>
+diff --git a/app/src/forkRelease/res/xml/shortcuts.xml b/app/src/forkRelease/res/xml/shortcuts.xml
+index 5f1a6c6..9eb7a3b 100644
+--- a/app/src/forkRelease/res/xml/shortcuts.xml
++++ b/app/src/forkRelease/res/xml/shortcuts.xml
+@@ -3,6 +3,17 @@
+    - License, v. 2.0. If a copy of the MPL was not distributed with this
+    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+ <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
++    <shortcut
++        android:shortcutId="open_single_screen"
++        android:enabled="true"
++        android:icon="@drawable/ic_static_shortcut_single_screen"
++        android:shortcutShortLabel="@string/home_screen_shortcut_single_screen"
++        android:shortcutLongLabel="@string/home_screen_shortcut_single_screen">
++        <intent
++            android:action="android.intent.action.MAIN"
++            android:targetPackage="io.github.forkmaintainers.iceraven"
++            android:targetClass="org.mozilla.fenix.HomeActivity" />
++    </shortcut>
+     <shortcut
+         android:shortcutId="open_new_tab"
+         android:enabled="true"
