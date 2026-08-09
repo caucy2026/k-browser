@@ -7,3 +7,4 @@ patches/0004-polish-browser-ui-and-synchronize-navigation.patch
 patches/0005-use-direct-google-maven-endpoint.patch
 patches/0006-fix-python-environment-cache-check.patch
 patches/0007-enforce-extended-display-and-unified-lifecycle.patch
+patches/0008-add-kemi-knowledge-favorite.patch

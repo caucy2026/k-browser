@@ -1,0 +1,11 @@
+diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dual_screen_home.html
+--- a/app/src/main/assets/dual_screen_home.html
++++ b/app/src/main/assets/dual_screen_home.html
+@@ -42,6 +42,7 @@
+     <a href="https://www.guokr.com/">果壳<span>科学知识</span></a>
+     <a href="https://github.com/">GitHub<span>开源代码</span></a>
+     <a href="https://www.oschina.net/">开源中国<span>技术社区</span></a>
++    <a href="https://kemi.newlinksz.com/kd/">KEMI 知识库<span>内部知识与文档</span></a>
+   </div>
+   <div class="guide">Display 2 显示第一页，Display 0 无缝承接下一页；任意屏幕滑动时按帧同步。</div>
+   <div class="spacer">下方内容用于展示双屏连续区域</div>

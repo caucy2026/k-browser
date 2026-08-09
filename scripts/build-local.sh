@@ -8,6 +8,12 @@ JAVA_DIR=${KBROWSER_JAVA_HOME:-"$PROJECT_DIR/.tools/jdk17/Contents/Home"}
 SDK_DIR=${KBROWSER_ANDROID_SDK_ROOT:-"$PROJECT_DIR/.tools/android-sdk"}
 VERSION_NAME=${KBROWSER_VERSION_NAME:-"$(git -C "$PROJECT_DIR" rev-parse --short HEAD)-local"}
 KEYSTORE_PATH=${KBROWSER_KEYSTORE_PATH:-"$PROJECT_DIR/.tools/kbrowser-debug.keystore"}
+KEYSTORE_PASSWORD=${KBROWSER_KEYSTORE_PASSWORD:-android}
+KEY_ALIAS=${KBROWSER_KEY_ALIAS:-androiddebugkey}
+KEY_PASSWORD=${KBROWSER_KEY_PASSWORD:-$KEYSTORE_PASSWORD}
+
+export KBROWSER_KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD"
+export KBROWSER_KEY_PASSWORD="$KEY_PASSWORD"
 
 [ -x "$JAVA_DIR/bin/java" ] || {
   echo "FAIL: JDK 17 not found: $JAVA_DIR" >&2
@@ -70,14 +76,14 @@ if printf '%s\n' "$APK_PATH" | grep -q -- '-unsigned\.apk$'; then
   if [ ! -f "$KEYSTORE_PATH" ]; then
     mkdir -p "$(dirname "$KEYSTORE_PATH")"
     "$JAVA_DIR/bin/keytool" -genkeypair -noprompt \
-      -keystore "$KEYSTORE_PATH" -storepass android \
-      -alias androiddebugkey -keypass android \
+      -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" \
+      -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" \
       -dname 'CN=KBrowser Local Build,O=KEMI,C=CN' \
       -keyalg RSA -keysize 2048 -validity 10000
   fi
   "$APKSIGNER" sign \
-    --ks "$KEYSTORE_PATH" --ks-pass pass:android \
-    --ks-key-alias androiddebugkey --key-pass pass:android \
+    --ks "$KEYSTORE_PATH" --ks-pass env:KBROWSER_KEYSTORE_PASSWORD \
+    --ks-key-alias "$KEY_ALIAS" --key-pass env:KBROWSER_KEY_PASSWORD \
     --out "$PROJECT_DIR/bin/KBrowser-arm64.apk" "$APK_PATH"
   "$APKSIGNER" verify --verbose "$PROJECT_DIR/bin/KBrowser-arm64.apk"
 else

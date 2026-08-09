@@ -99,3 +99,13 @@
 - `bin/` 保留本地 APK 与 SHA-256，但不提交二进制。
 - `test-results/` 保留真机截图、视频和日志，但不提交临时证据。
 - `artifacts/git-backups/` 保存本地 Git bundle，目录已被忽略，不污染源码历史。
+
+## 9. 正式 Release 补充
+
+- 收藏首页新增 `https://kemi.newlinksz.com/kd/`，显示为“KEMI 知识库”。
+- 正式 release 使用项目独立签名，不再使用 Android debug 或 CI 临时测试证书。
+- release 证书 SHA-256 指纹：
+  `73:D6:B0:55:B9:DC:06:59:D7:C0:A3:D9:D5:BB:49:E1:B8:C6:49:8A:A1:2C:DD:B2:A2:8C:64:9D:53:7B:11:76`。
+- 私钥、证书和本地口令文件统一保存在忽略目录 `keystore/`；该目录必须离线备份，
+  后续升级包必须继续使用同一证书，否则 Android 无法覆盖安装。
+- 正式构建入口：`./scripts/build-release.sh <versionName>`。
