@@ -9,7 +9,7 @@ diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
 +            android:targetActivity=".dualscreen.DualScreenBrowserActivity">
              <intent-filter>
                  <action android:name="android.intent.action.MAIN" />
-@@ -502,6 +502,20 @@
+@@ -502,6 +502,21 @@
              >
          </activity>
  
@@ -19,6 +19,7 @@ diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
 +            android:exported="true"
 +            android:launchMode="standard"
 +            android:resizeableActivity="true"
++            android:screenOrientation="landscape"
 +            android:theme="@style/NormalTheme">
 +            <intent-filter>
 +                <action android:name="android.intent.action.VIEW" />
@@ -58,7 +59,7 @@ new file mode 100644
 +
 +/**
 + * Two Gecko sessions form one continuous 1920 x 2560 browsing surface.
-+ * Display 0 shows pageTop; the secondary display shows pageTop + one viewport.
++ * Display 2 shows pageTop; Display 0 shows pageTop + one viewport.
 + */
 +@Suppress("DEPRECATION")
 +class DualScreenBrowserActivity : Activity() {
@@ -100,7 +101,7 @@ new file mode 100644
 +                        lastAppliedLocalY = null
 +                        return
 +                    }
-+                    val logicalTop = scrollY - if (isSecondary) geckoView.height else 0
++                    val logicalTop = scrollY - if (isSecondary) 0 else geckoView.height
 +                    DualScreenCoordinator.userScrolled(
 +                        this@DualScreenBrowserActivity,
 +                        logicalTop.coerceAtLeast(0),
@@ -124,7 +125,7 @@ new file mode 100644
 +    }
 +
 +    fun applyLogicalTop(logicalTop: Int) {
-+        val localY = logicalTop + if (isSecondary) geckoView.height else 0
++        val localY = logicalTop + if (isSecondary) 0 else geckoView.height
 +        lastAppliedLocalY = localY
 +        session.panZoomController.scrollTo(
 +            ScreenLength.zero(),
