@@ -10,3 +10,4 @@ patches/0007-enforce-extended-display-and-unified-lifecycle.patch
 patches/0008-add-kemi-knowledge-favorite.patch
 patches/0009-render-one-gecko-canvas-across-two-displays.patch
 patches/0010-rebind-retained-display-surfaces.patch
+patches/0011-polish-ui-sites-icon-and-hardware.patch
