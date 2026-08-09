@@ -1,0 +1,362 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 3543555..1f2ce90 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -505,8 +505,9 @@
+         <activity
+             android:name=".dualscreen.DualScreenBrowserActivity"
+             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
++            android:excludeFromRecents="true"
+             android:exported="true"
+-            android:launchMode="standard"
++            android:launchMode="singleTask"
+             android:resizeableActivity="true"
+             android:screenOrientation="landscape"
+             android:theme="@style/NormalTheme">
+@@ -517,6 +518,16 @@
+             </intent-filter>
+         </activity>
+ 
++        <activity
++            android:name=".dualscreen.DualScreenTopActivity"
++            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
++            android:excludeFromRecents="true"
++            android:exported="false"
++            android:launchMode="singleInstance"
++            android:resizeableActivity="true"
++            android:screenOrientation="landscape"
++            android:theme="@style/NormalTheme" />
++
+         <activity
+             android:name=".HomeActivity"
+             android:theme="@style/SplashScreenThemeBase"
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index d34829c..eda619d 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -40,22 +40,27 @@ import java.lang.ref.WeakReference
+  * Display 2 shows pageTop; Display 0 shows pageTop + one viewport.
+  */
+ @Suppress("DEPRECATION")
+-class DualScreenBrowserActivity : Activity() {
++open class DualScreenBrowserActivity : Activity() {
+     private lateinit var geckoView: GeckoView
+     private lateinit var session: GeckoSession
+-    private var isSecondary = false
++    internal open val isTopDisplay = false
+     private var programmaticTargetY: Int? = null
+     private var programmaticGeneration = 0
+     private var pendingLogicalTop: Int? = null
+     private var syncFramePosted = false
+     private var addressField: EditText? = null
+     private var loadingBar: ProgressBar? = null
++    private var gestureGeneration = 0
++    private var finishingFromPair = false
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
++        if (!isTopDisplay && display?.displayId != Display.DEFAULT_DISPLAY) {
++            redirectControllerToDisplay0()
++            return
++        }
+         requestWindowFeature(Window.FEATURE_NO_TITLE)
+         configureTargetHardwareWindow()
+-        isSecondary = intent.getBooleanExtra(EXTRA_SECONDARY, false)
+         val url = intent.getStringExtra(EXTRA_URL)
+             ?: intent.data?.getQueryParameter("url")
+             ?: DEFAULT_URL
+@@ -66,13 +71,20 @@ class DualScreenBrowserActivity : Activity() {
+                 ViewGroup.LayoutParams.MATCH_PARENT,
+             )
+             setOnTouchListener { _, event ->
+-                if (event.actionMasked == MotionEvent.ACTION_DOWN) cancelProgrammaticSync()
++                when (event.actionMasked) {
++                    MotionEvent.ACTION_DOWN -> {
++                        cancelProgrammaticSync()
++                        gestureGeneration++
++                        DualScreenCoordinator.gestureStarted(this@DualScreenBrowserActivity)
++                    }
++                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> scheduleGestureEnd()
++                }
+                 false
+             }
+         }
+         val root = FrameLayout(this).apply {
+             addView(geckoView)
+-            if (isSecondary) addView(createToolbar())
++            if (isTopDisplay) addView(createToolbar())
+         }
+         setContentView(root)
+         enterFullscreen()
+@@ -107,17 +119,9 @@ class DualScreenBrowserActivity : Activity() {
+ 
+             setScrollDelegate(object : GeckoSession.ScrollDelegate {
+                 override fun onScrollChanged(session: GeckoSession, scrollX: Int, scrollY: Int) {
+-                    val expected = programmaticTargetY
+-                    if (expected != null) {
+-                        if (kotlin.math.abs(scrollY - expected) <= SYNC_TOLERANCE_PX) {
+-                            val generation = ++programmaticGeneration
+-                            geckoView.postDelayed({
+-                                if (generation == programmaticGeneration) programmaticTargetY = null
+-                            }, SYNC_SETTLE_MS)
+-                        }
+-                        return
+-                    }
+-                    val logicalTop = scrollY - if (isSecondary) 0 else TARGET_VIEWPORT_HEIGHT_PX
++                    if (programmaticTargetY != null) return
++                    scheduleGestureEnd()
++                    val logicalTop = scrollY - if (isTopDisplay) 0 else TARGET_VIEWPORT_HEIGHT_PX
+                     DualScreenCoordinator.userScrolled(
+                         this@DualScreenBrowserActivity,
+                         logicalTop.coerceAtLeast(0),
+@@ -144,7 +148,7 @@ class DualScreenBrowserActivity : Activity() {
+         DualScreenCoordinator.attach(this)
+         session.loadUri(url)
+         geckoView.post { DualScreenCoordinator.surfaceReady(this) }
+-        if (!isSecondary) launchSecondary(url)
++        if (!isTopDisplay) launchTopDisplay(url)
+     }
+ 
+     private fun createToolbar(): View {
+@@ -254,7 +258,7 @@ class DualScreenBrowserActivity : Activity() {
+     }
+ 
+     private fun updateAddress(url: String) {
+-        if (!isSecondary || url == HOME_URL) return
++        if (!isTopDisplay || url == HOME_URL) return
+         addressField?.let { field ->
+             if (!field.hasFocus() && field.text.toString() != url) field.setText(url)
+         }
+@@ -282,10 +286,23 @@ class DualScreenBrowserActivity : Activity() {
+     fun reload() = session.reload()
+ 
+     override fun onDestroy() {
++        val closePair = !isTopDisplay && isFinishing && !isChangingConfigurations &&
++            !finishingFromPair
+         DualScreenCoordinator.detach(this)
+-        geckoView.releaseSession()
+-        session.close()
++        if (::geckoView.isInitialized) geckoView.releaseSession()
++        if (::session.isInitialized) session.close()
+         super.onDestroy()
++        if (closePair) DualScreenCoordinator.controllerDestroyed()
++    }
++
++    @Deprecated("Deprecated in Android")
++    override fun onBackPressed() {
++        DualScreenCoordinator.exitAll()
++    }
++
++    override fun onUserLeaveHint() {
++        super.onUserLeaveHint()
++        if (!isTopDisplay) DualScreenCoordinator.exitAll()
+     }
+ 
+     fun queueLogicalTop(logicalTop: Int) {
+@@ -301,7 +318,7 @@ class DualScreenBrowserActivity : Activity() {
+     }
+ 
+     private fun applyLogicalTop(logicalTop: Int) {
+-        val localY = logicalTop + if (isSecondary) 0 else TARGET_VIEWPORT_HEIGHT_PX
++        val localY = logicalTop + if (isTopDisplay) 0 else TARGET_VIEWPORT_HEIGHT_PX
+         programmaticTargetY = localY
+         val generation = ++programmaticGeneration
+         session.panZoomController.scrollTo(
+@@ -311,7 +328,7 @@ class DualScreenBrowserActivity : Activity() {
+         )
+         geckoView.postDelayed({
+             if (generation == programmaticGeneration) programmaticTargetY = null
+-        }, SYNC_TIMEOUT_MS)
++        }, PROGRAMMATIC_GUARD_MS)
+     }
+ 
+     private fun cancelProgrammaticSync() {
+@@ -320,14 +337,28 @@ class DualScreenBrowserActivity : Activity() {
+         pendingLogicalTop = null
+     }
+ 
+-    private fun launchSecondary(url: String) {
++    private fun scheduleGestureEnd() {
++        val generation = ++gestureGeneration
++        geckoView.postDelayed({
++            if (generation == gestureGeneration) {
++                DualScreenCoordinator.gestureEnded(this)
++            }
++        }, GESTURE_IDLE_MS)
++    }
++
++    internal fun finishFromPair() {
++        finishingFromPair = true
++        if (!isFinishing) finishAndRemoveTask()
++    }
++
++    private fun launchTopDisplay(url: String) {
+         val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+-        val secondary = manager.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
++        val secondary = manager.displays.firstOrNull { it.displayId == TARGET_TOP_DISPLAY_ID }
++            ?: manager.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+             ?: return
+-        val launchIntent = Intent(this, DualScreenBrowserActivity::class.java).apply {
+-            putExtra(EXTRA_SECONDARY, true)
++        val launchIntent = Intent(this, DualScreenTopActivity::class.java).apply {
+             putExtra(EXTRA_URL, url)
+-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
++            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+         }
+         val options = ActivityOptions.makeBasic().apply {
+             launchDisplayId = secondary.displayId
+@@ -335,6 +366,18 @@ class DualScreenBrowserActivity : Activity() {
+         startActivity(launchIntent, options.toBundle())
+     }
+ 
++    private fun redirectControllerToDisplay0() {
++        val launchIntent = Intent(this, DualScreenBrowserActivity::class.java).apply {
++            putExtras(intent)
++            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
++        }
++        val options = ActivityOptions.makeBasic().apply {
++            launchDisplayId = Display.DEFAULT_DISPLAY
++        }
++        startActivity(launchIntent, options.toBundle())
++        finish()
++    }
++
+     private fun enterFullscreen() {
+         window.setDecorFitsSystemWindows(false)
+         window.insetsController?.apply {
+@@ -366,36 +409,45 @@ class DualScreenBrowserActivity : Activity() {
+ 
+     companion object {
+         const val EXTRA_URL = "url"
+-        const val EXTRA_SECONDARY = "secondary"
+         const val HOME_URL = "resource://android/assets/dual_screen_home.html"
+         const val DEFAULT_URL = HOME_URL
+-        const val SYNC_TOLERANCE_PX = 3
+-        const val SYNC_SETTLE_MS = 34L
+-        const val SYNC_TIMEOUT_MS = 120L
++        const val PROGRAMMATIC_GUARD_MS = 240L
++        const val GESTURE_IDLE_MS = 180L
++        const val TARGET_TOP_DISPLAY_ID = 2
+         const val TARGET_WIDTH_PX = 1920
+         const val TARGET_VIEWPORT_HEIGHT_PX = 1280
+         const val TARGET_REFRESH_RATE = 60f
+     }
+ }
+ 
++class DualScreenTopActivity : DualScreenBrowserActivity() {
++    override val isTopDisplay = true
++}
++
+ private object DualScreenCoordinator {
+-    private var primary = WeakReference<DualScreenBrowserActivity>(null)
+-    private var secondary = WeakReference<DualScreenBrowserActivity>(null)
++    private var controller = WeakReference<DualScreenBrowserActivity>(null)
++    private var topDisplay = WeakReference<DualScreenBrowserActivity>(null)
++    private var gestureOwner = WeakReference<DualScreenBrowserActivity>(null)
+     private var logicalTop = 0
++    private var exiting = false
+ 
+     @Synchronized
+     fun attach(activity: DualScreenBrowserActivity) {
+-        val second = activity.intent.getBooleanExtra(
+-            DualScreenBrowserActivity.EXTRA_SECONDARY,
+-            false,
+-        )
+-        if (second) secondary = WeakReference(activity) else primary = WeakReference(activity)
++        exiting = false
++        if (activity.isTopDisplay) {
++            topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
++            topDisplay = WeakReference(activity)
++        } else {
++            controller.get()?.takeIf { it !== activity }?.finishFromPair()
++            controller = WeakReference(activity)
++        }
+     }
+ 
+     @Synchronized
+     fun detach(activity: DualScreenBrowserActivity) {
+-        if (primary.get() === activity) primary.clear()
+-        if (secondary.get() === activity) secondary.clear()
++        if (controller.get() === activity) controller.clear()
++        if (topDisplay.get() === activity) topDisplay.clear()
++        if (gestureOwner.get() === activity) gestureOwner.clear()
+     }
+ 
+     @Synchronized
+@@ -405,39 +457,66 @@ private object DualScreenCoordinator {
+ 
+     @Synchronized
+     fun userScrolled(source: DualScreenBrowserActivity, newLogicalTop: Int) {
++        if (gestureOwner.get() !== source) return
+         logicalTop = newLogicalTop
+-        val peer = if (primary.get() === source) secondary.get() else primary.get()
++        val peer = if (controller.get() === source) topDisplay.get() else controller.get()
+         peer?.runOnUiThread { peer.queueLogicalTop(logicalTop) }
+     }
+ 
++    @Synchronized
++    fun gestureStarted(source: DualScreenBrowserActivity) {
++        gestureOwner = WeakReference(source)
++    }
++
++    @Synchronized
++    fun gestureEnded(source: DualScreenBrowserActivity) {
++        if (gestureOwner.get() === source) gestureOwner.clear()
++    }
++
+     @Synchronized
+     fun navigationFrom(source: DualScreenBrowserActivity, url: String) {
+         logicalTop = 0
+-        val peer = if (primary.get() === source) secondary.get() else primary.get()
++        val peer = if (controller.get() === source) topDisplay.get() else controller.get()
+         peer?.runOnUiThread { peer.loadUrl(url) }
+     }
+ 
+     @Synchronized
+     fun navigate(url: String) {
+         logicalTop = 0
+-        primary.get()?.runOnUiThread { primary.get()?.loadUrl(url) }
+-        secondary.get()?.runOnUiThread { secondary.get()?.loadUrl(url) }
++        controller.get()?.runOnUiThread { controller.get()?.loadUrl(url) }
++        topDisplay.get()?.runOnUiThread { topDisplay.get()?.loadUrl(url) }
+     }
++
+     @Synchronized
+     fun goBack() {
+-        primary.get()?.runOnUiThread { primary.get()?.goBack() }
+-        secondary.get()?.runOnUiThread { secondary.get()?.goBack() }
++        controller.get()?.runOnUiThread { controller.get()?.goBack() }
++        topDisplay.get()?.runOnUiThread { topDisplay.get()?.goBack() }
+     }
+ 
+     @Synchronized
+     fun goForward() {
+-        primary.get()?.runOnUiThread { primary.get()?.goForward() }
+-        secondary.get()?.runOnUiThread { secondary.get()?.goForward() }
++        controller.get()?.runOnUiThread { controller.get()?.goForward() }
++        topDisplay.get()?.runOnUiThread { topDisplay.get()?.goForward() }
+     }
+ 
+     @Synchronized
+     fun reload() {
+-        primary.get()?.runOnUiThread { primary.get()?.reload() }
+-        secondary.get()?.runOnUiThread { secondary.get()?.reload() }
++        controller.get()?.runOnUiThread { controller.get()?.reload() }
++        topDisplay.get()?.runOnUiThread { topDisplay.get()?.reload() }
++    }
++
++    @Synchronized
++    fun controllerDestroyed() {
++        if (!exiting) {
++            topDisplay.get()?.runOnUiThread { topDisplay.get()?.finishFromPair() }
++        }
++    }
++
++    @Synchronized
++    fun exitAll() {
++        if (exiting) return
++        exiting = true
++        topDisplay.get()?.runOnUiThread { topDisplay.get()?.finishFromPair() }
++        controller.get()?.runOnUiThread { controller.get()?.finishFromPair() }
+     }
+ }

@@ -37,6 +37,11 @@
 
 通过条件：输出 `LOCAL BUILD PASSED`，并生成 `bin/KBrowser-arm64.apk` 与 SHA-256。
 
+双屏验收必须同时满足：`dumpsys activity` 中 D0 为
+`DualScreenBrowserActivity`、D2 为 `DualScreenTopActivity`；长页面初始截图中 D0
+必须承接 D2 下方恰好 1280px 的内容；在任一屏滚动时另一屏不得成为反馈源；从
+D0 返回或按 HOME 后两个 Activity 都必须消失。
+
 ## 3. 固定设备基线
 
 | 项目 | 基线 |

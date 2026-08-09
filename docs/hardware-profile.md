@@ -23,6 +23,15 @@
 5. 跨屏软键盘必须由目标屏真实 Activity 承载，并以目标窗口 IME Insets 为状态真源。浏览器地址栏首版保留本屏输入，后续单独验证代理输入 Activity，避免键盘导致网页布局或系统栏跳动。
 6. 同一 Activity 类需要在 D0/D2 同时存在，不能直接照搬副屏 `singleInstance`；若要采用该防多实例策略，必须拆成主/副屏两个 Activity 类后再验证。
 
+## 浏览器连续画布定义
+
+- 两块屏幕是同一 Android 设备上的两个独立 Display，不是物理叠屏，也不是系统镜像/复制模式。
+- 逻辑网页画布按 `1920×2560` 建模：Display 2 固定显示 `logicalTop + 0…1279`，Display 0 固定显示 `logicalTop + 1280…2559`。
+- 屏幕角色只允许根据 Activity 实际 `displayId` 判断，禁止使用启动器来源、Intent 布尔值或 Display 数组下标猜测。
+- Display 0 是会话总控 Activity，Display 2 是顶部显示 Activity。两者分别使用 `singleTask` 与 `singleInstance`，避免同一 Activity 类在两个任务栈中产生复制实例。
+- 任一时刻只允许触摸中的一块屏作为滚动源；另一块屏只接收同一帧的逻辑位置，禁止把程序性滚动再反馈给源屏。
+- Display 0 返回、HOME 或销毁时必须原子关闭 Display 2，不能残留副屏页面或独立任务。
+
 ## 应用优化约束
 
 1. 接缝偏移固定为 1280px，不使用可能受系统栏瞬态变化影响的 View 高度。
