@@ -227,18 +227,21 @@ feat: split one compositor frame across displays
 
 ## 7. 当前下一步
 
-1. GitHub Actions 编译包含双屏 Gecko 模式的 arm64 APK。
-2. 下载并安装到 `192.168.3.62`。
-3. 使用以下命令打开长网页：
+1. 使用本地候选 `a12d81e-local`，不等待云端构建；APK 位于
+   `bin/KBrowser-arm64.apk`，SHA-256 为
+   `637b1a20194d16a1e7489a81540cf0d68c5f3c43cadcde9cde6d5e724c1d2b18`。
+2. 设备空闲时只通过 LAUNCHER/桌面入口启动，确认 D0 为
+   `DualScreenBrowserActivity`、D2 为 `DualScreenTopActivity`。
+3. 从内置知识站进入 W3C 长页面，验证 D2 顶部和 D0 下方内容相差固定 1280px，
+   不能镜像，也不能缺页。
+4. 分别从 D2、D0 各滚动一次，录制两块物理屏，检查另一屏只跟随、不回传、
+   不抖动。
+5. 在 D0 分别执行返回和 HOME，确认两块屏的 Activity 同时消失；保存窗口状态、
+   SurfaceFlinger 指标和崩溃日志。
 
-```bash
-.tools/platform-tools/adb -s 192.168.3.62:5555 shell am start \
-  --display 0 -n org.mozilla.fenix/.dualscreen.DualScreenBrowserActivity \
-  --es url https://en.wikipedia.org/wiki/Web_browser
-```
-
-4. 分别在主屏、副屏拖动一次，确认另一屏同步滚动。
-5. 各抓取一张截图并运行 `scripts/check-activity-displays.sh` 闭环。
+2026-08-09 真机进度：本地 APK 已安装，已确认两个 Activity 分别位于 D0/D2；
+W3C 初始双屏画面已留档。滚动测试期间真机被 KOffice 测试占用，因此该次滚动截图
+作废，待设备空闲后从滚动步骤继续。
 
 当前原型使用两个共享 GeckoRuntime 的 GeckoSession；它不是系统 WebView。两屏共享
 Cookie 和逻辑滚动位置，Display 0 位置恒为 Display 2 加一个屏幕高度。后续 M5 再把两个页面

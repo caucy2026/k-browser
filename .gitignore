@@ -9,3 +9,5 @@
 /artifacts/
 /logs/
 /upstream/
+/bin/
+/test-results/
