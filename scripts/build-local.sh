@@ -4,8 +4,6 @@ set -eu
 
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BROWSER_DIR="$PROJECT_DIR/browser"
-JAVA_DIR=${KBROWSER_JAVA_HOME:-"$PROJECT_DIR/.tools/jdk17/Contents/Home"}
-SDK_DIR=${KBROWSER_ANDROID_SDK_ROOT:-"$PROJECT_DIR/.tools/android-sdk"}
 VERSION_NAME=${KBROWSER_VERSION_NAME:-"$(git -C "$PROJECT_DIR" rev-parse --short HEAD)-local"}
 KEYSTORE_PATH=${KBROWSER_KEYSTORE_PATH:-"$PROJECT_DIR/.tools/kbrowser-debug.keystore"}
 KEYSTORE_PASSWORD=${KBROWSER_KEYSTORE_PASSWORD:-android}
@@ -14,6 +12,49 @@ KEY_PASSWORD=${KBROWSER_KEY_PASSWORD:-$KEYSTORE_PASSWORD}
 
 export KBROWSER_KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD"
 export KBROWSER_KEY_PASSWORD="$KEY_PASSWORD"
+
+find_java_home() {
+  if [ -n "${KBROWSER_JAVA_HOME:-}" ]; then
+    printf '%s\n' "$KBROWSER_JAVA_HOME"
+  elif [ -x "$PROJECT_DIR/.tools/jdk17/Contents/Home/bin/java" ]; then
+    printf '%s\n' "$PROJECT_DIR/.tools/jdk17/Contents/Home"
+  elif [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    printf '%s\n' "$JAVA_HOME"
+  elif [ -x /usr/libexec/java_home ]; then
+    /usr/libexec/java_home -v 17
+  else
+    return 1
+  fi
+}
+
+find_android_sdk() {
+  if [ -n "${KBROWSER_ANDROID_SDK_ROOT:-}" ]; then
+    printf '%s\n' "$KBROWSER_ANDROID_SDK_ROOT"
+  elif [ -n "${ANDROID_SDK_ROOT:-}" ]; then
+    printf '%s\n' "$ANDROID_SDK_ROOT"
+  elif [ -n "${ANDROID_HOME:-}" ]; then
+    printf '%s\n' "$ANDROID_HOME"
+  elif [ -d "$PROJECT_DIR/.tools/android-sdk/platforms" ]; then
+    printf '%s\n' "$PROJECT_DIR/.tools/android-sdk"
+  elif [ -n "${HOME:-}" ] && [ -d "$HOME/Library/Android/sdk/platforms" ]; then
+    printf '%s\n' "$HOME/Library/Android/sdk"
+  elif [ -n "${HOME:-}" ] && [ -d "$HOME/Android/Sdk/platforms" ]; then
+    printf '%s\n' "$HOME/Android/Sdk"
+  elif [ -n "${HOME:-}" ] && [ -d "$HOME/android-sdk/android-sdk-linux/platforms" ]; then
+    printf '%s\n' "$HOME/android-sdk/android-sdk-linux"
+  else
+    return 1
+  fi
+}
+
+JAVA_DIR=$(find_java_home) || {
+  echo "FAIL: JDK 17 not found; set KBROWSER_JAVA_HOME or JAVA_HOME" >&2
+  exit 1
+}
+SDK_DIR=$(find_android_sdk) || {
+  echo "FAIL: Android SDK not found; set KBROWSER_ANDROID_SDK_ROOT or ANDROID_SDK_ROOT" >&2
+  exit 1
+}
 
 [ -x "$JAVA_DIR/bin/java" ] || {
   echo "FAIL: JDK 17 not found: $JAVA_DIR" >&2
