@@ -3,3 +3,4 @@
 patches/0001-add-dual-screen-browser-mode.patch
 patches/0002-add-browser-chrome-and-home.patch
 patches/0003-smooth-dual-screen-and-knowledge-home.patch
+patches/0004-polish-browser-ui-and-synchronize-navigation.patch

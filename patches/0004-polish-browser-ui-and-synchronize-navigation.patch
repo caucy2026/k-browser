@@ -1,0 +1,258 @@
+diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dual_screen_home.html
+--- a/app/src/main/assets/dual_screen_home.html
++++ b/app/src/main/assets/dual_screen_home.html
+@@ -6,19 +6,29 @@
+   <title>双屏浏览器</title>
+   <style>
+     * { box-sizing: border-box; }
+-    body { margin: 0; padding: 110px 7vw 120px; color: #172033; background: linear-gradient(#f4f8ff, #fff); font: 30px/1.55 system-ui, sans-serif; }
+-    h1 { margin: 0; font-size: 72px; color: #1456c0; }
+-    .sub { color: #596579; margin: 12px 0 48px; }
+-    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+-    a { display: block; padding: 30px 18px; border: 1px solid #d9e2f0; border-radius: 22px; background: #fff; color: #164ea3; text-decoration: none; box-shadow: 0 8px 28px #28508018; }
++    body { margin: 0; padding: 86px 6vw 120px; color: #172033; background: #f5f7fa; font: 28px/1.5 system-ui, sans-serif; }
++    header { display: flex; align-items: end; justify-content: space-between; gap: 40px; margin-bottom: 34px; }
++    h1 { margin: 0; font-size: 60px; line-height: 1.1; color: #1456c0; }
++    .sub { color: #596579; margin: 8px 0 0; }
++    form { display: flex; width: 620px; height: 66px; }
++    input { flex: 1; min-width: 0; padding: 0 22px; border: 1px solid #cbd5e3; border-radius: 12px 0 0 12px; background: #fff; color: #172033; font: inherit; outline: none; }
++    button { width: 108px; border: 0; border-radius: 0 12px 12px 0; background: #1456c0; color: #fff; font: inherit; }
++    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
++    a { display: block; min-height: 112px; padding: 24px 20px; border: 1px solid #d9e2f0; border-radius: 14px; background: #fff; color: #164ea3; text-decoration: none; }
+     a span { display: block; color: #7a8495; font-size: 21px; }
+-    .guide { margin-top: 64px; padding: 36px; border-radius: 24px; background: #eaf2ff; }
++    a:focus, a:active, button:focus { outline: 4px solid #8ab4f8; outline-offset: 2px; }
++    .guide { margin-top: 44px; padding: 28px; border-radius: 14px; background: #e6efff; }
+     .spacer { height: 1100px; display: grid; place-items: center; color: #8b95a5; }
+   </style>
+ </head>
+ <body>
+-  <h1>双屏浏览器</h1>
+-  <p class="sub">知识、文档与学习站点。网页将在两块屏幕上连续显示。</p>
++  <header>
++    <div><h1>双屏浏览器</h1><p class="sub">知识、文档与学习站点</p></div>
++    <form action="https://www.baidu.com/s" method="get">
++      <input name="wd" aria-label="搜索内容" placeholder="搜索知识或输入问题" autocomplete="off">
++      <button type="submit">搜索</button>
++    </form>
++  </header>
+   <div class="grid">
+     <a href="https://www.baidu.com/">百度<span>知识搜索</span></a>
+     <a href="https://baike.baidu.com/">百度百科<span>中文百科</span></a>
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -19,9 +19,11 @@ import android.view.WindowInsets
+ import android.view.WindowInsetsController
+ import android.view.WindowManager
+ import android.view.inputmethod.EditorInfo
++import android.view.inputmethod.InputMethodManager
+ import android.widget.EditText
+ import android.widget.FrameLayout
+ import android.widget.LinearLayout
++import android.widget.ProgressBar
+ import android.widget.TextView
+ import mozilla.components.concept.engine.EngineSession.CookieBannerHandlingMode
+ import mozilla.components.concept.engine.EngineSession.TrackingProtectionPolicy
+@@ -46,6 +48,8 @@ class DualScreenBrowserActivity : Activity() {
+     private var programmaticGeneration = 0
+     private var pendingLogicalTop: Int? = null
+     private var syncFramePosted = false
++    private var addressField: EditText? = null
++    private var loadingBar: ProgressBar? = null
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+@@ -81,7 +85,20 @@ class DualScreenBrowserActivity : Activity() {
+ 
+         session = GeckoSession().apply {
+             setProgressDelegate(object : GeckoSession.ProgressDelegate {
++                override fun onPageStart(session: GeckoSession, url: String) {
++                    loadingBar?.apply {
++                        progress = 5
++                        visibility = View.VISIBLE
++                    }
++                    updateAddress(url)
++                }
++
++                override fun onProgressChange(session: GeckoSession, progress: Int) {
++                    loadingBar?.progress = progress
++                }
++
+                 override fun onPageStop(session: GeckoSession, success: Boolean) {
++                    loadingBar?.visibility = View.GONE
+                     if (success) {
+                         geckoView.post { DualScreenCoordinator.surfaceReady(this@DualScreenBrowserActivity) }
+                     }
+@@ -115,6 +132,7 @@ class DualScreenBrowserActivity : Activity() {
+                     geckoPermissions: List<ContentPermission>,
+                     hasUserGesture: Boolean,
+                 ) {
++                    if (url != null) updateAddress(url)
+                     if (url != null && hasUserGesture) {
+                         DualScreenCoordinator.navigationFrom(this@DualScreenBrowserActivity, url)
+                     }
+@@ -130,63 +148,82 @@ class DualScreenBrowserActivity : Activity() {
+     }
+ 
+     private fun createToolbar(): View {
+-        val toolbar = LinearLayout(this).apply {
+-            orientation = LinearLayout.HORIZONTAL
+-            gravity = Gravity.CENTER_VERTICAL
+-            setPadding(dp(6), dp(5), dp(6), dp(5))
++        val container = FrameLayout(this).apply {
+             background = GradientDrawable().apply {
+                 setColor(Color.rgb(248, 250, 253))
+-                cornerRadius = dp(10).toFloat()
+                 setStroke(dp(1), Color.rgb(220, 225, 234))
+             }
+             elevation = 0f
+             layoutParams = FrameLayout.LayoutParams(
+                 FrameLayout.LayoutParams.MATCH_PARENT,
+-                dp(56),
++                dp(52),
+                 Gravity.TOP,
+-            ).apply {
+-                marginStart = dp(8)
+-                marginEnd = dp(8)
+-                topMargin = dp(8)
+-            }
++            )
++        }
++        val toolbar = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER_VERTICAL
++            setPadding(dp(8), dp(4), dp(8), dp(4))
++            layoutParams = FrameLayout.LayoutParams(
++                FrameLayout.LayoutParams.MATCH_PARENT,
++                dp(50),
++                Gravity.TOP,
++            )
+         }
+ 
+-        toolbar.addView(navButton("‹", "后退") { session.goBack() })
+-        toolbar.addView(navButton("›", "前进") { session.goForward() })
+-        toolbar.addView(navButton("↻", "刷新") { session.reload() })
++        toolbar.addView(navButton("‹", "后退") { DualScreenCoordinator.goBack() })
++        toolbar.addView(navButton("›", "前进") { DualScreenCoordinator.goForward() })
++        toolbar.addView(navButton("↻", "刷新") { DualScreenCoordinator.reload() })
+         toolbar.addView(navButton("⌂", "主页") { DualScreenCoordinator.navigate(HOME_URL) })
+ 
+         val address = EditText(this).apply {
+-            hint = "输入网址或搜索内容"
+-            textSize = 15f
++            hint = "搜索或输入网址"
++            textSize = 14f
+             isSingleLine = true
++            setSelectAllOnFocus(true)
+             imeOptions = EditorInfo.IME_ACTION_GO
+-            setPadding(dp(14), 0, dp(14), 0)
++            inputType = android.text.InputType.TYPE_CLASS_TEXT or
++                android.text.InputType.TYPE_TEXT_VARIATION_URI
++            setPadding(dp(13), 0, dp(13), 0)
+             background = GradientDrawable().apply {
+                 setColor(Color.WHITE)
+-                cornerRadius = dp(18).toFloat()
++                cornerRadius = dp(8).toFloat()
+                 setStroke(dp(1), Color.rgb(205, 212, 224))
+             }
+-            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply {
++            layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                 marginStart = dp(5)
+                 marginEnd = dp(5)
+             }
+             setOnEditorActionListener { _, actionId, _ ->
+                 if (actionId == EditorInfo.IME_ACTION_GO) {
+-                    DualScreenCoordinator.navigate(normalizeInput(text.toString()))
+-                    clearFocus()
++                    submitAddress(this)
+                     true
+                 } else {
+                     false
+                 }
+             }
+         }
++        addressField = address
+         toolbar.addView(address)
+-        toolbar.addView(navButton("前往", "打开网址", dp(64), true) {
+-            DualScreenCoordinator.navigate(normalizeInput(address.text.toString()))
+-            address.clearFocus()
++        toolbar.addView(navButton("前往", "打开网址", dp(58), true) {
++            submitAddress(address)
+         })
+-        return toolbar
++
++        loadingBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
++            max = 100
++            visibility = View.GONE
++            progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(28, 94, 207))
++            progressBackgroundTintList =
++                android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
++            layoutParams = FrameLayout.LayoutParams(
++                FrameLayout.LayoutParams.MATCH_PARENT,
++                dp(2),
++                Gravity.BOTTOM,
++            )
++        }
++        container.addView(toolbar)
++        container.addView(loadingBar)
++        return container
+     }
+ 
+     private fun navButton(
+@@ -209,6 +246,20 @@ class DualScreenBrowserActivity : Activity() {
+             layoutParams = LinearLayout.LayoutParams(width, dp(42))
+         }
+ 
++    private fun submitAddress(address: EditText) {
++        DualScreenCoordinator.navigate(normalizeInput(address.text.toString()))
++        address.clearFocus()
++        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
++            .hideSoftInputFromWindow(address.windowToken, 0)
++    }
++
++    private fun updateAddress(url: String) {
++        if (!isSecondary || url == HOME_URL) return
++        addressField?.let { field ->
++            if (!field.hasFocus() && field.text.toString() != url) field.setText(url)
++        }
++    }
++
+     private fun normalizeInput(raw: String): String {
+         val input = raw.trim()
+         if (input.isEmpty()) return HOME_URL
+@@ -224,6 +275,12 @@ class DualScreenBrowserActivity : Activity() {
+         session.loadUri(url)
+     }
+ 
++    fun goBack() = session.goBack()
++
++    fun goForward() = session.goForward()
++
++    fun reload() = session.reload()
++
+     override fun onDestroy() {
+         DualScreenCoordinator.detach(this)
+         geckoView.releaseSession()
+@@ -367,4 +424,21 @@ private object DualScreenCoordinator {
+         secondary.get()?.runOnUiThread { secondary.get()?.loadUrl(url) }
+     }
+ 
++    @Synchronized
++    fun goBack() {
++        primary.get()?.runOnUiThread { primary.get()?.goBack() }
++        secondary.get()?.runOnUiThread { secondary.get()?.goBack() }
++    }
++
++    @Synchronized
++    fun goForward() {
++        primary.get()?.runOnUiThread { primary.get()?.goForward() }
++        secondary.get()?.runOnUiThread { secondary.get()?.goForward() }
++    }
++
++    @Synchronized
++    fun reload() {
++        primary.get()?.runOnUiThread { primary.get()?.reload() }
++        secondary.get()?.runOnUiThread { secondary.get()?.reload() }
++    }
+ }
