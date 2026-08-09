@@ -234,10 +234,9 @@ diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserAct
      override fun onDestroy() {
          DualScreenCoordinator.detach(this)
          geckoView.releaseSession()
-@@ -367,4 +424,21 @@ private object DualScreenCoordinator {
+@@ -367,3 +424,20 @@ private object DualScreenCoordinator {
          secondary.get()?.runOnUiThread { secondary.get()?.loadUrl(url) }
      }
- 
 +    @Synchronized
 +    fun goBack() {
 +        primary.get()?.runOnUiThread { primary.get()?.goBack() }
