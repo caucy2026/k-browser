@@ -1,0 +1,211 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -4,14 +4,22 @@
+ import android.app.ActivityOptions
+ import android.content.Context
+ import android.content.Intent
++import android.graphics.Color
++import android.graphics.drawable.GradientDrawable
+ import android.hardware.display.DisplayManager
+ import android.os.Bundle
+ import android.view.Display
++import android.view.Gravity
+ import android.view.View
+ import android.view.ViewGroup
+ import android.view.Window
+ import android.view.WindowInsets
+ import android.view.WindowInsetsController
++import android.view.inputmethod.EditorInfo
++import android.widget.Button
++import android.widget.EditText
++import android.widget.FrameLayout
++import android.widget.LinearLayout
+ import org.mozilla.fenix.ext.components
+ import org.mozilla.geckoview.GeckoSession
+ import org.mozilla.geckoview.GeckoView
+@@ -44,7 +52,11 @@
+                 ViewGroup.LayoutParams.MATCH_PARENT,
+             )
+         }
+-        setContentView(geckoView)
++        val root = FrameLayout(this).apply {
++            addView(geckoView)
++            if (!isSecondary) addView(createToolbar())
++        }
++        setContentView(root)
+         enterFullscreen()
+ 
+         session = GeckoSession().apply {
+@@ -79,6 +91,94 @@
+         if (!isSecondary) launchSecondary(url)
+     }
+ 
++    private fun createToolbar(): View {
++        val toolbar = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER_VERTICAL
++            setPadding(dp(8), dp(6), dp(8), dp(6))
++            background = GradientDrawable().apply {
++                color = Color.argb(242, 255, 255, 255)
++                cornerRadius = dp(12).toFloat()
++                setStroke(dp(1), Color.rgb(210, 215, 225))
++            }
++            elevation = dp(8).toFloat()
++            layoutParams = FrameLayout.LayoutParams(
++                FrameLayout.LayoutParams.MATCH_PARENT,
++                dp(64),
++                Gravity.TOP,
++            ).apply {
++                marginStart = dp(12)
++                marginEnd = dp(12)
++                topMargin = dp(10)
++            }
++        }
++
++        toolbar.addView(navButton("‹") { session.goBack() })
++        toolbar.addView(navButton("›") { session.goForward() })
++        toolbar.addView(navButton("↻") { session.reload() })
++        toolbar.addView(navButton("⌂") { DualScreenCoordinator.navigate(HOME_URL) })
++
++        val address = EditText(this).apply {
++            hint = "输入网址或搜索内容"
++            textSize = 16f
++            singleLine = true
++            imeOptions = EditorInfo.IME_ACTION_GO
++            setPadding(dp(14), 0, dp(14), 0)
++            background = GradientDrawable().apply {
++                color = Color.rgb(244, 246, 250)
++                cornerRadius = dp(20).toFloat()
++                setStroke(dp(1), Color.rgb(190, 198, 210))
++            }
++            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
++                marginStart = dp(8)
++                marginEnd = dp(8)
++            }
++            setOnEditorActionListener { _, actionId, _ ->
++                if (actionId == EditorInfo.IME_ACTION_GO) {
++                    DualScreenCoordinator.navigate(normalizeInput(text.toString()))
++                    clearFocus()
++                    true
++                } else {
++                    false
++                }
++            }
++        }
++        toolbar.addView(address)
++        toolbar.addView(navButton("前往") {
++            DualScreenCoordinator.navigate(normalizeInput(address.text.toString()))
++            address.clearFocus()
++        }, dp(72)))
++        return toolbar
++    }
++
++    private fun navButton(label: String, action: () -> Unit, width: Int = dp(52)): Button =
++        Button(this).apply {
++            text = label
++            textSize = 16f
++            setTextColor(Color.rgb(32, 45, 65))
++            isAllCaps = false
++            minWidth = 0
++            minimumWidth = 0
++            setPadding(0, 0, 0, 0)
++            setOnClickListener { action() }
++            layoutParams = LinearLayout.LayoutParams(width, dp(46))
++        }
++
++    private fun normalizeInput(raw: String): String {
++        val input = raw.trim()
++        if (input.isEmpty()) return HOME_URL
++        if (input.contains(' ') || (!input.contains('.') && !input.contains("://"))) {
++            return "https://www.baidu.com/s?wd=" + java.net.URLEncoder.encode(input, "UTF-8")
++        }
++        return if (input.contains("://")) input else "https://$input"
++    }
++
++    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
++
++    fun loadUrl(url: String) {
++        session.loadUri(url)
++    }
++
+     override fun onDestroy() {
+         DualScreenCoordinator.detach(this)
+         geckoView.releaseSession()
+@@ -127,7 +227,8 @@
+     companion object {
+         const val EXTRA_URL = "url"
+         const val EXTRA_SECONDARY = "secondary"
+-        const val DEFAULT_URL = "https://www.w3.org/TR/html52/"
++        const val HOME_URL = "resource://android/assets/dual_screen_home.html"
++        const val DEFAULT_URL = HOME_URL
+     }
+ }
+ 
+@@ -161,5 +262,12 @@
+         logicalTop = newLogicalTop
+         val peer = if (primary.get() === source) secondary.get() else primary.get()
+         peer?.runOnUiThread { peer.applyLogicalTop(logicalTop) }
++    }
++
++    @Synchronized
++    fun navigate(url: String) {
++        logicalTop = 0
++        primary.get()?.runOnUiThread { primary.get()?.loadUrl(url) }
++        secondary.get()?.runOnUiThread { secondary.get()?.loadUrl(url) }
+     }
+ }
+diff --git a/app/src/forkRelease/res/values/static_strings.xml b/app/src/forkRelease/res/values/static_strings.xml
+--- a/app/src/forkRelease/res/values/static_strings.xml
++++ b/app/src/forkRelease/res/values/static_strings.xml
+@@ -4,5 +4,5 @@
+    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+ <resources>
+     <!-- Name of the application -->
+-    <string name="app_name" translatable="false">Iceraven</string>
++    <string name="app_name" translatable="false">双屏浏览器</string>
+ </resources>
+diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dual_screen_home.html
+new file mode 100644
+--- /dev/null
++++ b/app/src/main/assets/dual_screen_home.html
+@@ -0,0 +1,39 @@
++<!doctype html>
++<html lang="zh-CN">
++<head>
++  <meta charset="utf-8">
++  <meta name="viewport" content="width=device-width,initial-scale=1">
++  <title>双屏浏览器</title>
++  <style>
++    * { box-sizing: border-box; }
++    body { margin: 0; padding: 110px 7vw 120px; color: #172033; background: linear-gradient(#f4f8ff, #fff); font: 30px/1.55 system-ui, sans-serif; }
++    h1 { margin: 0; font-size: 72px; color: #1456c0; }
++    .sub { color: #596579; margin: 12px 0 48px; }
++    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
++    a { display: block; padding: 30px 18px; border: 1px solid #d9e2f0; border-radius: 22px; background: #fff; color: #164ea3; text-decoration: none; box-shadow: 0 8px 28px #28508018; }
++    a span { display: block; color: #7a8495; font-size: 21px; }
++    .guide { margin-top: 64px; padding: 36px; border-radius: 24px; background: #eaf2ff; }
++    .spacer { height: 1100px; display: grid; place-items: center; color: #8b95a5; }
++  </style>
++</head>
++<body>
++  <h1>双屏浏览器</h1>
++  <p class="sub">在上方地址栏输入网址或关键词，网页将在两块屏幕上连续显示。</p>
++  <div class="grid">
++    <a href="https://www.baidu.com/">百度<span>搜索与资讯</span></a>
++    <a href="https://www.bilibili.com/">哔哩哔哩<span>视频与社区</span></a>
++    <a href="https://www.zhihu.com/">知乎<span>问答社区</span></a>
++    <a href="https://www.taobao.com/">淘宝<span>购物</span></a>
++    <a href="https://www.jd.com/">京东<span>购物</span></a>
++    <a href="https://www.sina.com.cn/">新浪<span>新闻资讯</span></a>
++    <a href="https://www.163.com/">网易<span>新闻与邮箱</span></a>
++    <a href="https://www.qq.com/">腾讯网<span>综合资讯</span></a>
++    <a href="https://www.sogou.com/">搜狗<span>搜索</span></a>
++    <a href="https://www.cctv.com/">央视网<span>视频与新闻</span></a>
++    <a href="https://map.baidu.com/">百度地图<span>地图与出行</span></a>
++    <a href="https://www.douyin.com/">抖音<span>短视频</span></a>
++  </div>
++  <div class="guide">主屏显示网页上半部分，副屏承接下一屏内容；在任意屏幕滑动，两屏会一起滚动。</div>
++  <div class="spacer">下方内容用于展示双屏连续区域</div>
++</body>
++</html>
