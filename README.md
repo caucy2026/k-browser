@@ -14,9 +14,9 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 
 ## 从 GitHub 完整本地编译
 
-首次构建需要：Git、Git LFS、Bash、Python 3、wget、JDK 17、Android SDK、NDK
-`29.0.14206865`，以及可访问 Maven/Gradle 依赖的网络。macOS 还需要 GNU sed
-（`brew install gnu-sed wget`）。建议至少预留 8GB 内存和 20GB 磁盘空间。
+首次构建需要：Git、Git LFS、Bash、Python 3、JDK 17、Android SDK、NDK
+`29.0.14206865`，以及可访问 Maven/Gradle 依赖的网络。Linux 和 macOS 使用同一套
+准备脚本，不要求额外安装 GNU sed 或 wget。建议至少预留 8GB 内存和 20GB 磁盘空间。
 
 ```bash
 git clone --recurse-submodules https://github.com/caucy2026/k-browser.git
@@ -31,6 +31,9 @@ KBROWSER_VERSION_NAME=1.2.0-local ./scripts/build-local.sh
 2. 校验 Iceraven 固定提交，防止在错误上游版本打补丁。
 3. 执行 Iceraven 自身的 Android Components 准备步骤。
 4. 按 `patches/series` 顺序应用 KBrowser 0001–0011 补丁。
+
+如果系统 Python 尚未安装 PyYAML，脚本会在被忽略的 `.tools/prepare-venv` 中创建独立
+虚拟环境并安装固定版本，不修改系统 Python。
 
 `build-local.sh` 会依次寻找 `KBROWSER_JAVA_HOME`、`JAVA_HOME` 和系统 JDK 17；Android
 SDK 会依次寻找 `KBROWSER_ANDROID_SDK_ROOT`、`ANDROID_SDK_ROOT`、`ANDROID_HOME`、
@@ -49,6 +52,10 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 
 构建会自动为未签名 APK 生成本机测试证书；正式发布必须改用离线保存的正式证书。
 已准备过的源码再次执行 `prepare-source.sh` 会安全跳过，不会重复打补丁。
+
+2026-08-10 已按上述步骤从 GitHub 新目录完成实测：递归子模块、隔离 Python 环境、
+0001–0011 补丁、4215 个 Gradle 任务、R8、资源优化、APK 打包以及 v2/v3 签名校验
+全部通过。首次无增量构建耗时约 9 分钟，实际时间取决于网络与机器性能。
 
 ## 真机快速验证
 

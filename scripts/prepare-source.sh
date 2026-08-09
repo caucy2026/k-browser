@@ -10,30 +10,24 @@ command -v bash >/dev/null 2>&1 || {
   echo "FAIL: bash is required" >&2
   exit 1
 }
-command -v wget >/dev/null 2>&1 || {
-  echo "FAIL: wget is required" >&2
-  exit 1
-}
-
-PREPARE_BIN=$(mktemp -d "${TMPDIR:-/tmp}/kbrowser-prepare.XXXXXX")
-if command -v python >/dev/null 2>&1; then
-  :
-elif command -v python3 >/dev/null 2>&1; then
-  ln -s "$(command -v python3)" "$PREPARE_BIN/python"
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN=$(command -v python3)
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN=$(command -v python)
 else
   echo "FAIL: Python 3 is required" >&2
   exit 1
 fi
 
-if [ "$(uname -s)" = Darwin ]; then
-  command -v gsed >/dev/null 2>&1 || {
-    echo "FAIL: GNU sed is required on macOS; install it with: brew install gnu-sed" >&2
-    exit 1
-  }
-  ln -s "$(command -v gsed)" "$PREPARE_BIN/sed"
+PREPARE_VENV="$PROJECT_DIR/.tools/prepare-venv"
+if [ -x "$PREPARE_VENV/bin/python" ] && \
+    "$PREPARE_VENV/bin/python" -c 'import yaml' >/dev/null 2>&1; then
+  PYTHON_BIN="$PREPARE_VENV/bin/python"
+elif ! "$PYTHON_BIN" -c 'import yaml' >/dev/null 2>&1; then
+  "$PYTHON_BIN" -m venv "$PREPARE_VENV"
+  "$PREPARE_VENV/bin/python" -m pip install --disable-pip-version-check 'PyYAML==6.0.2'
+  PYTHON_BIN="$PREPARE_VENV/bin/python"
 fi
-PATH="$PREPARE_BIN:$PATH"
-export PATH
 
 git -C "$PROJECT_DIR" submodule update --init --recursive
 
@@ -53,10 +47,7 @@ fi
   exit 1
 }
 
-(
-  cd "$BROWSER_DIR"
-  ./automation/iceraven/patch_android_components.sh
-)
+"$PYTHON_BIN" "$PROJECT_DIR/scripts/prepare-iceraven.py" "$BROWSER_DIR"
 "$PROJECT_DIR/scripts/apply-patches.sh" "$BROWSER_DIR"
 
 echo "SOURCE PREPARE PASSED: $ICERAVEN_SHA + KBrowser patch series"
