@@ -47,7 +47,7 @@ diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserAct
 +            gravity = Gravity.CENTER_VERTICAL
 +            setPadding(dp(6), dp(5), dp(6), dp(5))
 +            background = GradientDrawable().apply {
-+                color = Color.argb(248, 248, 250, 253)
++                setColor(Color.argb(248, 248, 250, 253))
 +                cornerRadius = dp(10).toFloat()
 +                setStroke(dp(1), Color.rgb(220, 225, 234))
 +            }
@@ -71,11 +71,11 @@ diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserAct
 +        val address = EditText(this).apply {
 +            hint = "输入网址或搜索内容"
 +            textSize = 15f
-+            singleLine = true
++            isSingleLine = true
 +            imeOptions = EditorInfo.IME_ACTION_GO
 +            setPadding(dp(14), 0, dp(14), 0)
 +            background = GradientDrawable().apply {
-+                color = Color.WHITE
++                setColor(Color.WHITE)
 +                cornerRadius = dp(18).toFloat()
 +                setStroke(dp(1), Color.rgb(205, 212, 224))
 +            }
@@ -114,7 +114,7 @@ diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserAct
 +            contentDescription = description
 +            setTextColor(if (emphasized) Color.WHITE else Color.rgb(45, 58, 78))
 +            background = GradientDrawable().apply {
-+                color = if (emphasized) Color.rgb(28, 94, 207) else Color.TRANSPARENT
++                setColor(if (emphasized) Color.rgb(28, 94, 207) else Color.TRANSPARENT)
 +                cornerRadius = dp(17).toFloat()
 +            }
 +            setOnClickListener { action() }
