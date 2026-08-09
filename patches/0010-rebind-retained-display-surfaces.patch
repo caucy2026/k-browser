@@ -1,0 +1,104 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 3d4cedc..0b1cded 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -113,6 +113,31 @@ open class DualScreenBrowserActivity : Activity() {
+         if (!isTopDisplay) launchTopDisplay(url)
+     }
+ 
++    override fun onNewIntent(intent: Intent) {
++        super.onNewIntent(intent)
++        setIntent(intent)
++        val url = intent.getStringExtra(EXTRA_URL)
++            ?: intent.data?.getQueryParameter("url")
++            ?: DualScreenCoordinator.currentUrl()
++        DualScreenCoordinator.attach(this, url)
++        registerCurrentSurface()
++        if (!isTopDisplay) launchTopDisplay(url)
++    }
++
++    override fun onResume() {
++        super.onResume()
++        // singleTask/singleInstance activities can survive while the Gecko
++        // session and EGL compositor are recreated. SurfaceView will not emit
++        // surfaceCreated again in that case, so always rebind its live Surface.
++        registerCurrentSurface()
++    }
++
++    private fun registerCurrentSurface() {
++        if (::browserSurface.isInitialized && browserSurface.holder.surface.isValid) {
++            DualScreenCoordinator.outputAvailable(this, browserSurface.holder.surface)
++        }
++    }
++
+     private fun createToolbar(): View {
+         val container = FrameLayout(this).apply {
+             background = GradientDrawable().apply {
+@@ -364,6 +389,9 @@ private object DualScreenCoordinator {
+     private var currentUrl = DualScreenBrowserActivity.DEFAULT_URL
+     private var exiting = false
+ 
++    @Synchronized
++    fun currentUrl(): String = currentUrl
++
+     @Synchronized
+     fun attach(activity: DualScreenBrowserActivity, initialUrl: String) {
+         exiting = false
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+index e053e62..db82b29 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+@@ -47,6 +47,7 @@ internal class DualScreenSharedCompositor {
+     private var topOutput: Output? = null
+     private var bottomOutput: Output? = null
+     private var released = false
++    private var hasFrame = false
+ 
+     private val textureMatrix = FloatArray(16)
+     private val vertices = floatBuffer(
+@@ -73,6 +74,11 @@ internal class DualScreenSharedCompositor {
+     fun setOutput(slot: Slot, surface: Surface?) {
+         handler.post {
+             if (released || eglDisplay == EGL14.EGL_NO_DISPLAY) return@post
++            val existing = if (slot == Slot.TOP) topOutput else bottomOutput
++            if (surface != null && existing?.surface === surface && surface.isValid) {
++                if (hasFrame) drawFrame(updateTexture = false)
++                return@post
++            }
+             destroyOutput(slot)
+             if (surface != null && surface.isValid) {
+                 val attributes = intArrayOf(EGL14.EGL_NONE)
+@@ -86,7 +92,8 @@ internal class DualScreenSharedCompositor {
+                 if (eglSurface != null && eglSurface != EGL14.EGL_NO_SURFACE) {
+                     val output = Output(surface, eglSurface)
+                     if (slot == Slot.TOP) topOutput = output else bottomOutput = output
+-                    drawFrame(updateTexture = false)
++                    Log.i(TAG, "Bound $slot output; cachedFrame=$hasFrame")
++                    if (hasFrame) drawFrame(updateTexture = false) else clearOutput(output)
+                 }
+             }
+         }
+@@ -211,6 +218,8 @@ internal class DualScreenSharedCompositor {
+             try {
+                 inputTexture?.updateTexImage()
+                 inputTexture?.getTransformMatrix(textureMatrix)
++                if (!hasFrame) Log.i(TAG, "Received first 1920x2560 Gecko frame")
++                hasFrame = true
+             } catch (error: RuntimeException) {
+                 Log.w(TAG, "Dropping invalid Gecko frame", error)
+                 return
+@@ -220,6 +229,14 @@ internal class DualScreenSharedCompositor {
+         drawOutput(bottomOutput, bottomCoordinates)
+     }
+ 
++    private fun clearOutput(output: Output) {
++        makeCurrent(output.eglSurface)
++        GLES20.glViewport(0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT)
++        GLES20.glClearColor(1f, 1f, 1f, 1f)
++        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
++        EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
++    }
++
+     private fun drawOutput(output: Output?, coordinates: FloatBuffer) {
+         if (output == null || !output.surface.isValid) return
+         makeCurrent(output.eglSurface)

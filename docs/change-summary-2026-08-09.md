@@ -26,6 +26,7 @@
 | `0007` | 修复复制模式：D0 总控与 D2 顶部拆为两个 Activity；按实际 Display 判定角色；D2 为第一页、D0 固定加 1280px；加入触摸源独占和统一退出。 |
 | `0008` | 收藏页加入 KEMI 知识库。 |
 | `0009` | 废弃双 Session 追帧同步；一个 GeckoSession 渲染 1920×2560 帧，由共享 EGL 合成器同时裁切到 D2/D0；两屏触摸进入同一 PanZoomController。 |
+| `0010` | 修复副屏 `singleInstance` 复用黑屏：在 `onNewIntent/onResume` 重新绑定存活 Surface，并复用已缓存的 Gecko 首帧。 |
 
 `0007` 的关键类和配置：
 
@@ -69,6 +70,11 @@
 单页面候选 `1.1.0-rc1` 已完成核心闭环：首次打开连续、W3C 初始接缝连续、
 D2/D0 分别滑动均控制同一页面、HOME 后两屏 Activity 同时退出，且无崩溃日志。
 SurfaceFlinger 指标、输入选择和视频/Canvas 仍作为正式 1.1.0 前的轻量补充项。
+
+`0010` 真机回归已通过：3 次进程冷启动、2 次 HOME 后 Activity 复用共 5 轮，
+D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用轮以
+`cachedFrame=true` 重新绑定 TOP Surface。W3C 页面从 D2、D0 各滑动一次后，两屏仍为
+同一页面相邻区域，未发现 FATAL EXCEPTION。
 
 ## 6. `kemi-rd` 文档对当前实现的帮助
 
