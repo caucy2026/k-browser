@@ -35,6 +35,8 @@ RELEASE_APK="$PROJECT_DIR/bin/DualScreenBrowser-v${VERSION_NAME}-arm64-release.a
 cp "$PROJECT_DIR/bin/KBrowser-arm64.apk" "$RELEASE_APK"
 
 SDK_DIR=${KBROWSER_ANDROID_SDK_ROOT:-"$PROJECT_DIR/.tools/android-sdk"}
+JAVA_DIR=${KBROWSER_JAVA_HOME:-"$PROJECT_DIR/.tools/jdk17/Contents/Home"}
+export JAVA_HOME="$JAVA_DIR"
 APKSIGNER=$(find "$SDK_DIR/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
 [ -x "$APKSIGNER" ] || {
   echo "FAIL: apksigner not found under $SDK_DIR/build-tools" >&2
@@ -43,4 +45,14 @@ APKSIGNER=$(find "$SDK_DIR/build-tools" -type f -name apksigner -print | sort -V
 
 "$APKSIGNER" verify --verbose --print-certs "$RELEASE_APK"
 shasum -a 256 "$RELEASE_APK" > "$RELEASE_APK.sha256"
+APK_SHA256=$(awk '{print $1}' "$RELEASE_APK.sha256")
+SOURCE_COMMIT=$(git -C "$PROJECT_DIR" rev-parse HEAD)
+CERT_SHA256=$(openssl x509 -in "$KEYSTORE_DIR/kbrowser-release-cert.pem" \
+  -noout -fingerprint -sha256 | sed 's/^.*=//')
+{
+  printf 'versionName=%s\n' "$VERSION_NAME"
+  printf 'sourceCommit=%s\n' "$SOURCE_COMMIT"
+  printf 'apkSha256=%s\n' "$APK_SHA256"
+  printf 'certificateSha256=%s\n' "$CERT_SHA256"
+} > "$RELEASE_APK.manifest.txt"
 echo "RELEASE BUILD PASSED: $RELEASE_APK"
