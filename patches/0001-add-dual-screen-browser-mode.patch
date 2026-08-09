@@ -164,7 +164,7 @@ new file mode 100644
 +    companion object {
 +        const val EXTRA_URL = "url"
 +        const val EXTRA_SECONDARY = "secondary"
-+        const val DEFAULT_URL = "https://example.com/"
++        const val DEFAULT_URL = "https://www.w3.org/TR/html52/"
 +    }
 +}
 +
