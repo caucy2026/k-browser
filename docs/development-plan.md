@@ -8,8 +8,8 @@
 - 普通模式具备地址栏、标签页、下载、文件上传、权限和 Cookie 等浏览器能力。
 - 双屏模式启动 Display 2，并让一个网页形成 `1920 x 2560` 连续逻辑视口。
 - Display 2 显示逻辑区域 `y=0..1279`，Display 0 显示 `y=1280..2559`。
-- 当前阶段使用两个 GeckoSession 共享 URL、Cookie 与逻辑滚动位置；必须阻断程序化滚动反馈并按显示帧合并同步事件。
-- 两屏触摸统一映射到连续逻辑坐标。
+- 当前实现只使用一个 GeckoSession、一个 DOM 和一个 `1920 x 2560` Gecko 合成帧；应用 EGL 合成器把同一帧上下两半分别输出到 D2/D0。
+- 两屏触摸统一送入同一个 PanZoomController；D0 的触摸 Y 坐标固定增加 1280px。
 
 ### 首版不做
 
@@ -27,7 +27,7 @@
 4. 本机依赖完整时必须优先本地增量编译，云端只处理本机缺失工具链或网络依赖的情况。
 5. 优先真机冒烟，避免重型自动化测试。
 6. 双屏框架与 Chromium 内核改造分开验证。
-7. 先实现可丢弃原型，再进入单页面双 Surface 正式实现。
+7. 双 Session 同步原型已经作废，验收只认可单页面双 Surface 实现。
 
 本地候选构建统一使用：
 
@@ -155,12 +155,12 @@ adb shell monkey -p io.github.forkmaintainers.iceraven -c android.intent.categor
 
 通过条件：静态页面接缝正确，四类冒烟页面可用；允许动画不同步，但不得崩溃。
 
-### M5：单页面双 Surface
+### M5：单页面双 Surface（已实现，真机核心闭环通过）
 
 工作：
 
 - 一个网页实例使用 `1920 x 2560` 逻辑视口。
-- Chromium compositor 的同一帧裁切输出到两个 Android Surface。
+- Gecko compositor 的同一帧经 SurfaceTexture/EGL 裁切输出到两个 Android Surface。
 - Display 2 取上半区域，Display 0 取下半区域。
 - 副屏输入事件映射到连续坐标空间。
 - 两屏共享焦点、选择、缩放和滚动状态。
@@ -225,24 +225,14 @@ prototype: synchronize dual browser tabs
 feat: split one compositor frame across displays
 ```
 
-## 7. 当前下一步
+## 7. 当前状态与下一步
 
-1. 使用本地候选 `a12d81e-local`，不等待云端构建；APK 位于
-   `bin/KBrowser-arm64.apk`，SHA-256 为
-   `637b1a20194d16a1e7489a81540cf0d68c5f3c43cadcde9cde6d5e724c1d2b18`。
-2. 设备空闲时只通过 LAUNCHER/桌面入口启动，确认 D0 为
-   `DualScreenBrowserActivity`、D2 为 `DualScreenTopActivity`。
-3. 从内置知识站进入 W3C 长页面，验证 D2 顶部和 D0 下方内容相差固定 1280px，
-   不能镜像，也不能缺页。
-4. 分别从 D2、D0 各滚动一次，录制两块物理屏，检查另一屏只跟随、不回传、
-   不抖动。
-5. 在 D0 分别执行返回和 HOME，确认两块屏的 Activity 同时消失；保存窗口状态、
-   SurfaceFlinger 指标和崩溃日志。
+1. 本地候选 `1.1.0-rc1` 已完整 release 构建并安装到 62 真机。
+2. LAUNCHER 首次打开时，D2 显示主页上半段，D0 无缝承接下半段，未出现镜像或缺页。
+3. W3C 长页面分别从 D2、D0 滚动均驱动同一个 GeckoSession；两屏持续显示同一帧的相邻区域。
+4. HOME 后 D0/D2 同时回到启动器，logcat 未发现 FATAL EXCEPTION。
+5. 下一步补充输入框、长按选择、视频/Canvas 和 SurfaceFlinger 指标的轻量验收，再发布正式 1.1.0。
 
-2026-08-09 真机进度：本地 APK 已安装，已确认两个 Activity 分别位于 D0/D2；
-W3C 初始双屏画面已留档。滚动测试期间真机被 KOffice 测试占用，因此该次滚动截图
-作废，待设备空闲后从滚动步骤继续。
-
-当前原型使用两个共享 GeckoRuntime 的 GeckoSession；它不是系统 WebView。两屏共享
-Cookie 和逻辑滚动位置，Display 0 位置恒为 Display 2 加一个屏幕高度。后续 M5 再把两个页面
-实例替换为单页面双 Surface，解决视频、Canvas 和页面内部瞬时状态重复的问题。
+核心架构已从双 Session 同步切换为单 GeckoSession + 单 SurfaceTexture + 双 EGL
+window surface。两屏不再交换滚动位置，因此不存在程序化滚动反馈环；视频、Canvas、
+动态 DOM 也只执行一次。

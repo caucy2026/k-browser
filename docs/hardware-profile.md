@@ -18,7 +18,7 @@
 
 1. Display ID 不保证连续，启动副屏必须枚举 `DisplayManager.displays`，不能把数组下标当成 Display ID。
 2. 交互型双屏应使用两个独立 Activity；`Presentation` 只适合辅助展示，焦点与生命周期不适合浏览器输入。
-3. 双 Activity 独立渲染会使 GPU 负载接近翻倍，因此两个 GeckoSession 只作为当前原型；正式目标仍是单页面、单合成源裁切到两个 Surface。
+3. 双 Activity 只承载两个 Android 输出 Surface；网页只由一个 GeckoSession 渲染，再由共享 EGL 线程裁切同一帧，避免双页面渲染和反馈同步。
 4. 平台签名场景可通过隐藏 `SurfaceControl.Transaction` 访问物理 LayerStack。该能力当前先用于 D0/D2 无弹窗录屏取证，后续评估是否能承载单合成源双屏投影。
 5. 跨屏软键盘必须由目标屏真实 Activity 承载，并以目标窗口 IME Insets 为状态真源。浏览器地址栏首版保留本屏输入，后续单独验证代理输入 Activity，避免键盘导致网页布局或系统栏跳动。
 6. 同一 Activity 类需要在 D0/D2 同时存在，不能直接照搬副屏 `singleInstance`；若要采用该防多实例策略，必须拆成主/副屏两个 Activity 类后再验证。
@@ -29,14 +29,14 @@
 - 逻辑网页画布按 `1920×2560` 建模：Display 2 固定显示 `logicalTop + 0…1279`，Display 0 固定显示 `logicalTop + 1280…2559`。
 - 屏幕角色只允许根据 Activity 实际 `displayId` 判断，禁止使用启动器来源、Intent 布尔值或 Display 数组下标猜测。
 - Display 0 是会话总控 Activity，Display 2 是顶部显示 Activity。两者分别使用 `singleTask` 与 `singleInstance`，避免同一 Activity 类在两个任务栈中产生复制实例。
-- 任一时刻只允许触摸中的一块屏作为滚动源；另一块屏只接收同一帧的逻辑位置，禁止把程序性滚动再反馈给源屏。
+- 两块屏的触摸都直接映射到同一个 PanZoomController；D0 事件增加固定 1280px Y 偏移，不再存在另一页面的程序性跟随。
 - Display 0 返回、HOME 或销毁时必须原子关闭 Display 2，不能残留副屏页面或独立任务。
 
 ## 应用优化约束
 
 1. 接缝偏移固定为 1280px，不使用可能受系统栏瞬态变化影响的 View 高度。
-2. 滚动回调先按帧合并，再向另一显示提交；程序化滚动不得回传，避免反馈环和抖动。
-3. 用户在任一屏按下时，立即取消旧的程序化同步目标，保证触摸接管无延迟。
+2. 每次 Gecko frame available 后，在同一 EGL 线程依次提交 D2 上半帧和 D0 下半帧；不交换滚动回调。
+3. 任一屏触摸直接操作同一页面，不设置同步目标或保护窗口。
 4. 两屏显式选择 `1920×1280 @ 60Hz` 显示模式并固定横屏。
 5. 浏览器栏使用不透明背景并取消阴影，减少 Mali-G52 的透明混合与离屏合成。
 6. 使用严格跟踪保护和 Cookie 横幅拒绝策略，减少广告/跟踪脚本带来的布局跳动与 GPU/CPU 开销。

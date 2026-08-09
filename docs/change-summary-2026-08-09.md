@@ -24,6 +24,8 @@
 | `0005` | Google Maven 改为可直接访问的仓库端点，提高本地构建可用性。 |
 | `0006` | 修复 Gradle Python 环境缓存检查，使本地依赖复用可正常执行。 |
 | `0007` | 修复复制模式：D0 总控与 D2 顶部拆为两个 Activity；按实际 Display 判定角色；D2 为第一页、D0 固定加 1280px；加入触摸源独占和统一退出。 |
+| `0008` | 收藏页加入 KEMI 知识库。 |
+| `0009` | 废弃双 Session 追帧同步；一个 GeckoSession 渲染 1920×2560 帧，由共享 EGL 合成器同时裁切到 D2/D0；两屏触摸进入同一 PanZoomController。 |
 
 `0007` 的关键类和配置：
 
@@ -64,13 +66,9 @@
   `DualScreenTopActivity`。
 - 已抓取双屏首页和 W3C 页面初始截图，能够看到两屏内容不同而非镜像。
 
-尚未判定通过：
-
-- D2/D0 分别滚动后的连续接缝与无抖动验收。
-- D0 返回/HOME 后双 Activity 同时退出。
-- SurfaceFlinger missed frame 增量和双屏滚动视频。
-
-原因：滚动测试期间 KOffice 开始占用真机，之后的桌面截图不属于浏览器结果，已明确作废。
+单页面候选 `1.1.0-rc1` 已完成核心闭环：首次打开连续、W3C 初始接缝连续、
+D2/D0 分别滑动均控制同一页面、HOME 后两屏 Activity 同时退出，且无崩溃日志。
+SurfaceFlinger 指标、输入选择和视频/Canvas 仍作为正式 1.1.0 前的轻量补充项。
 
 ## 6. `kemi-rd` 文档对当前实现的帮助
 
@@ -88,10 +86,9 @@
 
 ## 7. 当前技术边界
 
-当前仍是两个共享 GeckoRuntime 的 GeckoSession，通过 URL、Cookie 与逻辑滚动同步形成连续视觉原型。
-它尚不是“一个 DOM/一个 compositor 同时裁切到两个 Surface”的最终实现，因此视频、Canvas、
-动态布局和严格逐帧一致性仍存在天然风险。最终无抖动目标需要进入单页面双 Surface 阶段，
-在 Gecko/Android compositor 层输出同一帧的上下两个裁切区域。
+当前已经是一个 DOM、一个 GeckoSession 和一个 Gecko compositor 输出。Gecko 先渲染
+`1920×2560` 到 SurfaceTexture，应用的单 EGL 线程在取得下一帧前依次提交上下两个裁切区域。
+该结构消除了两个页面之间的 URL、滚动和动态状态同步，也从根源上移除了反馈抖动。
 
 ## 8. 本地 Git 备份口径
 

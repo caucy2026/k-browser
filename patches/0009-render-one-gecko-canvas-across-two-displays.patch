@@ -1,0 +1,812 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index eda619d..3d4cedc 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -9,9 +9,14 @@ import android.graphics.drawable.ColorDrawable
+ import android.graphics.drawable.GradientDrawable
+ import android.hardware.display.DisplayManager
+ import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
+ import android.view.Display
+ import android.view.Gravity
+ import android.view.MotionEvent
++import android.view.Surface
++import android.view.SurfaceHolder
++import android.view.SurfaceView
+ import android.view.View
+ import android.view.ViewGroup
+ import android.view.Window
+@@ -28,29 +33,21 @@ import android.widget.TextView
+ import mozilla.components.concept.engine.EngineSession.CookieBannerHandlingMode
+ import mozilla.components.concept.engine.EngineSession.TrackingProtectionPolicy
+ import org.mozilla.fenix.ext.components
++import org.mozilla.geckoview.GeckoDisplay
+ import org.mozilla.geckoview.GeckoSession
+ import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
+-import org.mozilla.geckoview.GeckoView
+-import org.mozilla.geckoview.PanZoomController
+-import org.mozilla.geckoview.ScreenLength
+ import java.lang.ref.WeakReference
+ 
+ /**
+- * Two Gecko sessions form one continuous 1920 x 2560 browsing surface.
+- * Display 2 shows pageTop; Display 0 shows pageTop + one viewport.
++ * One Gecko session renders a 1920 x 2560 canvas. The shared compositor sends
++ * its top half to Display 2 and bottom half to Display 0.
+  */
+ @Suppress("DEPRECATION")
+ open class DualScreenBrowserActivity : Activity() {
+-    private lateinit var geckoView: GeckoView
+-    private lateinit var session: GeckoSession
++    private lateinit var browserSurface: SurfaceView
+     internal open val isTopDisplay = false
+-    private var programmaticTargetY: Int? = null
+-    private var programmaticGeneration = 0
+-    private var pendingLogicalTop: Int? = null
+-    private var syncFramePosted = false
+     private var addressField: EditText? = null
+     private var loadingBar: ProgressBar? = null
+-    private var gestureGeneration = 0
+     private var finishingFromPair = false
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+@@ -65,25 +62,42 @@ open class DualScreenBrowserActivity : Activity() {
+             ?: intent.data?.getQueryParameter("url")
+             ?: DEFAULT_URL
+ 
+-        geckoView = GeckoView(this).apply {
++        browserSurface = SurfaceView(this).apply {
+             layoutParams = ViewGroup.LayoutParams(
+                 ViewGroup.LayoutParams.MATCH_PARENT,
+                 ViewGroup.LayoutParams.MATCH_PARENT,
+             )
+             setOnTouchListener { _, event ->
+-                when (event.actionMasked) {
+-                    MotionEvent.ACTION_DOWN -> {
+-                        cancelProgrammaticSync()
+-                        gestureGeneration++
+-                        DualScreenCoordinator.gestureStarted(this@DualScreenBrowserActivity)
+-                    }
+-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> scheduleGestureEnd()
+-                }
+-                false
++                DualScreenCoordinator.dispatchTouch(
++                    this@DualScreenBrowserActivity,
++                    event,
++                )
+             }
++            holder.addCallback(object : SurfaceHolder.Callback {
++                override fun surfaceCreated(holder: SurfaceHolder) {
++                    DualScreenCoordinator.outputAvailable(
++                        this@DualScreenBrowserActivity,
++                        holder.surface,
++                    )
++                }
++
++                override fun surfaceChanged(
++                    holder: SurfaceHolder,
++                    format: Int,
++                    width: Int,
++                    height: Int,
++                ) = Unit
++
++                override fun surfaceDestroyed(holder: SurfaceHolder) {
++                    DualScreenCoordinator.outputAvailable(
++                        this@DualScreenBrowserActivity,
++                        null,
++                    )
++                }
++            })
+         }
+         val root = FrameLayout(this).apply {
+-            addView(geckoView)
++            addView(browserSurface)
+             if (isTopDisplay) addView(createToolbar())
+         }
+         setContentView(root)
+@@ -95,59 +109,7 @@ open class DualScreenBrowserActivity : Activity() {
+             cookieBannerHandlingGlobalRules = true
+         }
+ 
+-        session = GeckoSession().apply {
+-            setProgressDelegate(object : GeckoSession.ProgressDelegate {
+-                override fun onPageStart(session: GeckoSession, url: String) {
+-                    loadingBar?.apply {
+-                        progress = 5
+-                        visibility = View.VISIBLE
+-                    }
+-                    updateAddress(url)
+-                }
+-
+-                override fun onProgressChange(session: GeckoSession, progress: Int) {
+-                    loadingBar?.progress = progress
+-                }
+-
+-                override fun onPageStop(session: GeckoSession, success: Boolean) {
+-                    loadingBar?.visibility = View.GONE
+-                    if (success) {
+-                        geckoView.post { DualScreenCoordinator.surfaceReady(this@DualScreenBrowserActivity) }
+-                    }
+-                }
+-            })
+-
+-            setScrollDelegate(object : GeckoSession.ScrollDelegate {
+-                override fun onScrollChanged(session: GeckoSession, scrollX: Int, scrollY: Int) {
+-                    if (programmaticTargetY != null) return
+-                    scheduleGestureEnd()
+-                    val logicalTop = scrollY - if (isTopDisplay) 0 else TARGET_VIEWPORT_HEIGHT_PX
+-                    DualScreenCoordinator.userScrolled(
+-                        this@DualScreenBrowserActivity,
+-                        logicalTop.coerceAtLeast(0),
+-                    )
+-                }
+-            })
+-
+-            setNavigationDelegate(object : GeckoSession.NavigationDelegate {
+-                override fun onLocationChange(
+-                    session: GeckoSession,
+-                    url: String?,
+-                    geckoPermissions: List<ContentPermission>,
+-                    hasUserGesture: Boolean,
+-                ) {
+-                    if (url != null) updateAddress(url)
+-                    if (url != null && hasUserGesture) {
+-                        DualScreenCoordinator.navigationFrom(this@DualScreenBrowserActivity, url)
+-                    }
+-                }
+-            })
+-            open(components.core.geckoRuntime)
+-        }
+-        geckoView.setSession(session)
+-        DualScreenCoordinator.attach(this)
+-        session.loadUri(url)
+-        geckoView.post { DualScreenCoordinator.surfaceReady(this) }
++        DualScreenCoordinator.attach(this, url)
+         if (!isTopDisplay) launchTopDisplay(url)
+     }
+ 
+@@ -275,22 +237,30 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+ 
+-    fun loadUrl(url: String) {
+-        session.loadUri(url)
++    internal fun pageStarted(url: String) {
++        loadingBar?.apply {
++            progress = 5
++            visibility = View.VISIBLE
++        }
++        updateAddress(url)
+     }
+ 
+-    fun goBack() = session.goBack()
++    internal fun pageProgress(progress: Int) {
++        loadingBar?.progress = progress
++    }
+ 
+-    fun goForward() = session.goForward()
++    internal fun pageStopped() {
++        loadingBar?.visibility = View.GONE
++    }
+ 
+-    fun reload() = session.reload()
++    internal fun locationChanged(url: String) {
++        updateAddress(url)
++    }
+ 
+     override fun onDestroy() {
+         val closePair = !isTopDisplay && isFinishing && !isChangingConfigurations &&
+             !finishingFromPair
+         DualScreenCoordinator.detach(this)
+-        if (::geckoView.isInitialized) geckoView.releaseSession()
+-        if (::session.isInitialized) session.close()
+         super.onDestroy()
+         if (closePair) DualScreenCoordinator.controllerDestroyed()
+     }
+@@ -305,47 +275,6 @@ open class DualScreenBrowserActivity : Activity() {
+         if (!isTopDisplay) DualScreenCoordinator.exitAll()
+     }
+ 
+-    fun queueLogicalTop(logicalTop: Int) {
+-        pendingLogicalTop = logicalTop
+-        if (syncFramePosted) return
+-        syncFramePosted = true
+-        geckoView.postOnAnimation {
+-            syncFramePosted = false
+-            val next = pendingLogicalTop
+-            pendingLogicalTop = null
+-            if (next != null) applyLogicalTop(next)
+-        }
+-    }
+-
+-    private fun applyLogicalTop(logicalTop: Int) {
+-        val localY = logicalTop + if (isTopDisplay) 0 else TARGET_VIEWPORT_HEIGHT_PX
+-        programmaticTargetY = localY
+-        val generation = ++programmaticGeneration
+-        session.panZoomController.scrollTo(
+-            ScreenLength.zero(),
+-            ScreenLength.fromPixels(localY.toDouble()),
+-            PanZoomController.SCROLL_BEHAVIOR_AUTO,
+-        )
+-        geckoView.postDelayed({
+-            if (generation == programmaticGeneration) programmaticTargetY = null
+-        }, PROGRAMMATIC_GUARD_MS)
+-    }
+-
+-    private fun cancelProgrammaticSync() {
+-        programmaticGeneration++
+-        programmaticTargetY = null
+-        pendingLogicalTop = null
+-    }
+-
+-    private fun scheduleGestureEnd() {
+-        val generation = ++gestureGeneration
+-        geckoView.postDelayed({
+-            if (generation == gestureGeneration) {
+-                DualScreenCoordinator.gestureEnded(this)
+-            }
+-        }, GESTURE_IDLE_MS)
+-    }
+-
+     internal fun finishFromPair() {
+         finishingFromPair = true
+         if (!isFinishing) finishAndRemoveTask()
+@@ -411,11 +340,10 @@ open class DualScreenBrowserActivity : Activity() {
+         const val EXTRA_URL = "url"
+         const val HOME_URL = "resource://android/assets/dual_screen_home.html"
+         const val DEFAULT_URL = HOME_URL
+-        const val PROGRAMMATIC_GUARD_MS = 240L
+-        const val GESTURE_IDLE_MS = 180L
+         const val TARGET_TOP_DISPLAY_ID = 2
+         const val TARGET_WIDTH_PX = 1920
+         const val TARGET_VIEWPORT_HEIGHT_PX = 1280
++        const val TARGET_CANVAS_HEIGHT_PX = 2560
+         const val TARGET_REFRESH_RATE = 60f
+     }
+ }
+@@ -425,21 +353,28 @@ class DualScreenTopActivity : DualScreenBrowserActivity() {
+ }
+ 
+ private object DualScreenCoordinator {
++    private val mainHandler = Handler(Looper.getMainLooper())
+     private var controller = WeakReference<DualScreenBrowserActivity>(null)
+     private var topDisplay = WeakReference<DualScreenBrowserActivity>(null)
+-    private var gestureOwner = WeakReference<DualScreenBrowserActivity>(null)
+-    private var logicalTop = 0
++    private var session: GeckoSession? = null
++    private var geckoDisplay: GeckoDisplay? = null
++    private var compositor: DualScreenSharedCompositor? = null
++    private var topSurface: Surface? = null
++    private var bottomSurface: Surface? = null
++    private var currentUrl = DualScreenBrowserActivity.DEFAULT_URL
+     private var exiting = false
+ 
+     @Synchronized
+-    fun attach(activity: DualScreenBrowserActivity) {
++    fun attach(activity: DualScreenBrowserActivity, initialUrl: String) {
+         exiting = false
+         if (activity.isTopDisplay) {
+             topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
+             topDisplay = WeakReference(activity)
++            activity.locationChanged(currentUrl)
+         } else {
+             controller.get()?.takeIf { it !== activity }?.finishFromPair()
+             controller = WeakReference(activity)
++            ensureSession(activity, initialUrl)
+         }
+     }
+ 
+@@ -447,62 +382,55 @@ private object DualScreenCoordinator {
+     fun detach(activity: DualScreenBrowserActivity) {
+         if (controller.get() === activity) controller.clear()
+         if (topDisplay.get() === activity) topDisplay.clear()
+-        if (gestureOwner.get() === activity) gestureOwner.clear()
+-    }
+-
+-    @Synchronized
+-    fun surfaceReady(activity: DualScreenBrowserActivity) {
+-        activity.queueLogicalTop(logicalTop)
+-    }
+-
+-    @Synchronized
+-    fun userScrolled(source: DualScreenBrowserActivity, newLogicalTop: Int) {
+-        if (gestureOwner.get() !== source) return
+-        logicalTop = newLogicalTop
+-        val peer = if (controller.get() === source) topDisplay.get() else controller.get()
+-        peer?.runOnUiThread { peer.queueLogicalTop(logicalTop) }
+-    }
+-
+-    @Synchronized
+-    fun gestureStarted(source: DualScreenBrowserActivity) {
+-        gestureOwner = WeakReference(source)
+     }
+ 
+     @Synchronized
+-    fun gestureEnded(source: DualScreenBrowserActivity) {
+-        if (gestureOwner.get() === source) gestureOwner.clear()
++    fun outputAvailable(activity: DualScreenBrowserActivity, surface: Surface?) {
++        val slot = if (activity.isTopDisplay) {
++            topSurface = surface
++            DualScreenSharedCompositor.Slot.TOP
++        } else {
++            bottomSurface = surface
++            DualScreenSharedCompositor.Slot.BOTTOM
++        }
++        compositor?.setOutput(slot, surface)
+     }
+ 
+     @Synchronized
+-    fun navigationFrom(source: DualScreenBrowserActivity, url: String) {
+-        logicalTop = 0
+-        val peer = if (controller.get() === source) topDisplay.get() else controller.get()
+-        peer?.runOnUiThread { peer.loadUrl(url) }
++    fun dispatchTouch(source: DualScreenBrowserActivity, event: MotionEvent): Boolean {
++        val activeSession = session ?: return false
++        val transformed = MotionEvent.obtain(event)
++        if (!source.isTopDisplay) {
++            transformed.offsetLocation(
++                0f,
++                DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX.toFloat(),
++            )
++        }
++        activeSession.setActive(true)
++        activeSession.setFocused(true)
++        activeSession.panZoomController.onTouchEvent(transformed)
++        transformed.recycle()
++        return true
+     }
+ 
+     @Synchronized
+     fun navigate(url: String) {
+-        logicalTop = 0
+-        controller.get()?.runOnUiThread { controller.get()?.loadUrl(url) }
+-        topDisplay.get()?.runOnUiThread { topDisplay.get()?.loadUrl(url) }
++        session?.loadUri(url)
+     }
+ 
+     @Synchronized
+     fun goBack() {
+-        controller.get()?.runOnUiThread { controller.get()?.goBack() }
+-        topDisplay.get()?.runOnUiThread { topDisplay.get()?.goBack() }
++        session?.goBack()
+     }
+ 
+     @Synchronized
+     fun goForward() {
+-        controller.get()?.runOnUiThread { controller.get()?.goForward() }
+-        topDisplay.get()?.runOnUiThread { topDisplay.get()?.goForward() }
++        session?.goForward()
+     }
+ 
+     @Synchronized
+     fun reload() {
+-        controller.get()?.runOnUiThread { controller.get()?.reload() }
+-        topDisplay.get()?.runOnUiThread { topDisplay.get()?.reload() }
++        session?.reload()
+     }
+ 
+     @Synchronized
+@@ -510,13 +438,93 @@ private object DualScreenCoordinator {
+         if (!exiting) {
+             topDisplay.get()?.runOnUiThread { topDisplay.get()?.finishFromPair() }
+         }
++        shutdownSession()
+     }
+ 
+     @Synchronized
+     fun exitAll() {
+         if (exiting) return
+         exiting = true
++        shutdownSession()
+         topDisplay.get()?.runOnUiThread { topDisplay.get()?.finishFromPair() }
+         controller.get()?.runOnUiThread { controller.get()?.finishFromPair() }
+     }
++
++    private fun ensureSession(activity: DualScreenBrowserActivity, initialUrl: String) {
++        if (session != null) return
++        currentUrl = initialUrl
++        val createdSession = GeckoSession().apply {
++            setProgressDelegate(object : GeckoSession.ProgressDelegate {
++                override fun onPageStart(session: GeckoSession, url: String) {
++                    currentUrl = url
++                    topDisplay.get()?.pageStarted(url)
++                }
++
++                override fun onProgressChange(session: GeckoSession, progress: Int) {
++                    topDisplay.get()?.pageProgress(progress)
++                }
++
++                override fun onPageStop(session: GeckoSession, success: Boolean) {
++                    topDisplay.get()?.pageStopped()
++                }
++            })
++            setNavigationDelegate(object : GeckoSession.NavigationDelegate {
++                override fun onLocationChange(
++                    session: GeckoSession,
++                    url: String?,
++                    geckoPermissions: List<ContentPermission>,
++                    hasUserGesture: Boolean,
++                ) {
++                    if (url != null) {
++                        currentUrl = url
++                        topDisplay.get()?.locationChanged(url)
++                    }
++                }
++            })
++            open(activity.components.core.geckoRuntime)
++            setActive(true)
++            setFocused(true)
++        }
++        session = createdSession
++        val sharedCompositor = DualScreenSharedCompositor()
++        compositor = sharedCompositor
++        sharedCompositor.start { inputSurface ->
++            mainHandler.post {
++                val activeSession = session ?: return@post
++                val display = activeSession.acquireDisplay()
++                geckoDisplay = display
++                display.surfaceChanged(
++                    GeckoDisplay.SurfaceInfo.Builder(inputSurface)
++                        .size(
++                            DualScreenBrowserActivity.TARGET_WIDTH_PX,
++                            DualScreenBrowserActivity.TARGET_CANVAS_HEIGHT_PX,
++                        )
++                        .build(),
++                )
++                topSurface?.let {
++                    sharedCompositor.setOutput(DualScreenSharedCompositor.Slot.TOP, it)
++                }
++                bottomSurface?.let {
++                    sharedCompositor.setOutput(DualScreenSharedCompositor.Slot.BOTTOM, it)
++                }
++                activeSession.loadUri(initialUrl)
++            }
++        }
++    }
++
++    private fun shutdownSession() {
++        val activeSession = session
++        val display = geckoDisplay
++        if (activeSession != null && display != null) {
++            display.surfaceDestroyed()
++            activeSession.releaseDisplay(display)
++        }
++        geckoDisplay = null
++        activeSession?.close()
++        session = null
++        compositor?.stop()
++        compositor = null
++        topSurface = null
++        bottomSurface = null
++    }
+ }
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+new file mode 100644
+index 0000000..e053e62
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+@@ -0,0 +1,323 @@
++package org.mozilla.fenix.dualscreen
++
++import android.graphics.SurfaceTexture
++import android.opengl.EGL14
++import android.opengl.EGLConfig
++import android.opengl.EGLContext
++import android.opengl.EGLDisplay
++import android.opengl.EGLExt
++import android.opengl.EGLSurface
++import android.opengl.GLES11Ext
++import android.opengl.GLES20
++import android.os.Handler
++import android.os.HandlerThread
++import android.util.Log
++import android.view.Surface
++import java.nio.ByteBuffer
++import java.nio.ByteOrder
++import java.nio.FloatBuffer
++
++/**
++ * Consumes one 1920x2560 Gecko frame and presents its two halves on the two
++ * physical displays. Both EGL window surfaces are drawn from the same texture
++ * before the next Gecko frame is acquired, so the seam cannot drift by a frame.
++ */
++internal class DualScreenSharedCompositor {
++    enum class Slot { TOP, BOTTOM }
++
++    private data class Output(
++        val surface: Surface,
++        val eglSurface: EGLSurface,
++    )
++
++    private val thread = HandlerThread("KBrowserDualCompositor").apply { start() }
++    private val handler = Handler(thread.looper)
++    private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
++    private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
++    private var eglConfig: EGLConfig? = null
++    private var pbuffer: EGLSurface = EGL14.EGL_NO_SURFACE
++    private var inputTextureId = 0
++    private var inputTexture: SurfaceTexture? = null
++    private var inputSurface: Surface? = null
++    private var program = 0
++    private var positionLocation = -1
++    private var textureLocation = -1
++    private var matrixLocation = -1
++    private var samplerLocation = -1
++    private var topOutput: Output? = null
++    private var bottomOutput: Output? = null
++    private var released = false
++
++    private val textureMatrix = FloatArray(16)
++    private val vertices = floatBuffer(
++        floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f),
++    )
++    // SurfaceTexture applies its producer transform after these coordinates.
++    // Its Android buffer transform flips Y, so 0.5..1 is the visual top half.
++    private val topCoordinates = floatBuffer(
++        floatArrayOf(0f, 0.5f, 1f, 0.5f, 0f, 1f, 1f, 1f),
++    )
++    private val bottomCoordinates = floatBuffer(
++        floatArrayOf(0f, 0f, 1f, 0f, 0f, 0.5f, 1f, 0.5f),
++    )
++
++    fun start(onInputReady: (Surface) -> Unit) {
++        handler.post {
++            if (released) return@post
++            initializeEgl()
++            createInputSurface()
++            inputSurface?.let(onInputReady)
++        }
++    }
++
++    fun setOutput(slot: Slot, surface: Surface?) {
++        handler.post {
++            if (released || eglDisplay == EGL14.EGL_NO_DISPLAY) return@post
++            destroyOutput(slot)
++            if (surface != null && surface.isValid) {
++                val attributes = intArrayOf(EGL14.EGL_NONE)
++                val eglSurface = EGL14.eglCreateWindowSurface(
++                    eglDisplay,
++                    eglConfig,
++                    surface,
++                    attributes,
++                    0,
++                )
++                if (eglSurface != null && eglSurface != EGL14.EGL_NO_SURFACE) {
++                    val output = Output(surface, eglSurface)
++                    if (slot == Slot.TOP) topOutput = output else bottomOutput = output
++                    drawFrame(updateTexture = false)
++                }
++            }
++        }
++    }
++
++    fun stop() {
++        handler.post {
++            if (released) return@post
++            released = true
++            destroyOutput(Slot.TOP)
++            destroyOutput(Slot.BOTTOM)
++            inputTexture?.setOnFrameAvailableListener(null)
++            inputTexture?.release()
++            inputTexture = null
++            inputSurface?.release()
++            inputSurface = null
++            if (program != 0) GLES20.glDeleteProgram(program)
++            if (inputTextureId != 0) {
++                GLES20.glDeleteTextures(1, intArrayOf(inputTextureId), 0)
++            }
++            if (pbuffer != EGL14.EGL_NO_SURFACE) {
++                EGL14.eglDestroySurface(eglDisplay, pbuffer)
++            }
++            if (eglContext != EGL14.EGL_NO_CONTEXT) {
++                EGL14.eglDestroyContext(eglDisplay, eglContext)
++            }
++            if (eglDisplay != EGL14.EGL_NO_DISPLAY) EGL14.eglTerminate(eglDisplay)
++            thread.quitSafely()
++        }
++    }
++
++    private fun initializeEgl() {
++        eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
++        check(eglDisplay != EGL14.EGL_NO_DISPLAY) { "No EGL display" }
++        check(EGL14.eglInitialize(eglDisplay, IntArray(2), 0, IntArray(2), 0)) {
++            "EGL initialization failed"
++        }
++        val configAttributes = intArrayOf(
++            EGL14.EGL_RENDERABLE_TYPE,
++            EGL14.EGL_OPENGL_ES2_BIT,
++            EGL14.EGL_SURFACE_TYPE,
++            EGL14.EGL_WINDOW_BIT or EGL14.EGL_PBUFFER_BIT,
++            EGL14.EGL_RED_SIZE,
++            8,
++            EGL14.EGL_GREEN_SIZE,
++            8,
++            EGL14.EGL_BLUE_SIZE,
++            8,
++            EGL14.EGL_ALPHA_SIZE,
++            8,
++            EGL14.EGL_NONE,
++        )
++        val configs = arrayOfNulls<EGLConfig>(1)
++        val count = IntArray(1)
++        check(
++            EGL14.eglChooseConfig(
++                eglDisplay,
++                configAttributes,
++                0,
++                configs,
++                0,
++                configs.size,
++                count,
++                0,
++            ) && count[0] > 0,
++        ) { "No matching EGL config" }
++        eglConfig = configs[0]
++        eglContext = EGL14.eglCreateContext(
++            eglDisplay,
++            eglConfig,
++            EGL14.EGL_NO_CONTEXT,
++            intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE),
++            0,
++        )
++        check(eglContext != EGL14.EGL_NO_CONTEXT) { "EGL context creation failed" }
++        pbuffer = EGL14.eglCreatePbufferSurface(
++            eglDisplay,
++            eglConfig,
++            intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE),
++            0,
++        )
++        makeCurrent(pbuffer)
++        createProgram()
++    }
++
++    private fun createInputSurface() {
++        val textures = IntArray(1)
++        GLES20.glGenTextures(1, textures, 0)
++        inputTextureId = textures[0]
++        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, inputTextureId)
++        GLES20.glTexParameteri(
++            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
++            GLES20.GL_TEXTURE_MIN_FILTER,
++            GLES20.GL_LINEAR,
++        )
++        GLES20.glTexParameteri(
++            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
++            GLES20.GL_TEXTURE_MAG_FILTER,
++            GLES20.GL_LINEAR,
++        )
++        GLES20.glTexParameteri(
++            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
++            GLES20.GL_TEXTURE_WRAP_S,
++            GLES20.GL_CLAMP_TO_EDGE,
++        )
++        GLES20.glTexParameteri(
++            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
++            GLES20.GL_TEXTURE_WRAP_T,
++            GLES20.GL_CLAMP_TO_EDGE,
++        )
++        inputTexture = SurfaceTexture(inputTextureId).apply {
++            setDefaultBufferSize(CANVAS_WIDTH, CANVAS_HEIGHT)
++            setOnFrameAvailableListener({ drawFrame(updateTexture = true) }, handler)
++        }
++        inputSurface = Surface(inputTexture)
++    }
++
++    private fun drawFrame(updateTexture: Boolean) {
++        if (released || inputTexture == null) return
++        makeCurrent(pbuffer)
++        if (updateTexture) {
++            try {
++                inputTexture?.updateTexImage()
++                inputTexture?.getTransformMatrix(textureMatrix)
++            } catch (error: RuntimeException) {
++                Log.w(TAG, "Dropping invalid Gecko frame", error)
++                return
++            }
++        }
++        drawOutput(topOutput, topCoordinates)
++        drawOutput(bottomOutput, bottomCoordinates)
++    }
++
++    private fun drawOutput(output: Output?, coordinates: FloatBuffer) {
++        if (output == null || !output.surface.isValid) return
++        makeCurrent(output.eglSurface)
++        GLES20.glViewport(0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT)
++        GLES20.glClearColor(1f, 1f, 1f, 1f)
++        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
++        GLES20.glUseProgram(program)
++        vertices.position(0)
++        coordinates.position(0)
++        GLES20.glEnableVertexAttribArray(positionLocation)
++        GLES20.glVertexAttribPointer(positionLocation, 2, GLES20.GL_FLOAT, false, 0, vertices)
++        GLES20.glEnableVertexAttribArray(textureLocation)
++        GLES20.glVertexAttribPointer(textureLocation, 2, GLES20.GL_FLOAT, false, 0, coordinates)
++        GLES20.glUniformMatrix4fv(matrixLocation, 1, false, textureMatrix, 0)
++        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
++        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, inputTextureId)
++        GLES20.glUniform1i(samplerLocation, 0)
++        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
++        GLES20.glDisableVertexAttribArray(positionLocation)
++        GLES20.glDisableVertexAttribArray(textureLocation)
++        EGLExt.eglPresentationTimeANDROID(eglDisplay, output.eglSurface, System.nanoTime())
++        EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
++    }
++
++    private fun destroyOutput(slot: Slot) {
++        val output = if (slot == Slot.TOP) topOutput else bottomOutput
++        if (output != null && eglDisplay != EGL14.EGL_NO_DISPLAY) {
++            EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
++        }
++        if (slot == Slot.TOP) topOutput = null else bottomOutput = null
++    }
++
++    private fun makeCurrent(surface: EGLSurface) {
++        check(EGL14.eglMakeCurrent(eglDisplay, surface, surface, eglContext)) {
++            "eglMakeCurrent failed: 0x${Integer.toHexString(EGL14.eglGetError())}"
++        }
++    }
++
++    private fun createProgram() {
++        val vertexShader = compileShader(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER)
++        val fragmentShader = compileShader(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER)
++        program = GLES20.glCreateProgram()
++        GLES20.glAttachShader(program, vertexShader)
++        GLES20.glAttachShader(program, fragmentShader)
++        GLES20.glLinkProgram(program)
++        val linked = IntArray(1)
++        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linked, 0)
++        check(linked[0] == GLES20.GL_TRUE) { GLES20.glGetProgramInfoLog(program) }
++        GLES20.glDeleteShader(vertexShader)
++        GLES20.glDeleteShader(fragmentShader)
++        positionLocation = GLES20.glGetAttribLocation(program, "aPosition")
++        textureLocation = GLES20.glGetAttribLocation(program, "aTextureCoordinate")
++        matrixLocation = GLES20.glGetUniformLocation(program, "uTextureMatrix")
++        samplerLocation = GLES20.glGetUniformLocation(program, "uTexture")
++    }
++
++    private fun compileShader(type: Int, source: String): Int {
++        val shader = GLES20.glCreateShader(type)
++        GLES20.glShaderSource(shader, source)
++        GLES20.glCompileShader(shader)
++        val compiled = IntArray(1)
++        GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, compiled, 0)
++        check(compiled[0] == GLES20.GL_TRUE) { GLES20.glGetShaderInfoLog(shader) }
++        return shader
++    }
++
++    private fun floatBuffer(values: FloatArray): FloatBuffer =
++        ByteBuffer.allocateDirect(values.size * 4)
++            .order(ByteOrder.nativeOrder())
++            .asFloatBuffer()
++            .apply { put(values); position(0) }
++
++    companion object {
++        private const val TAG = "KBrowserCompositor"
++        private const val CANVAS_WIDTH = 1920
++        private const val CANVAS_HEIGHT = 2560
++        private const val OUTPUT_WIDTH = 1920
++        private const val OUTPUT_HEIGHT = 1280
++
++        private const val VERTEX_SHADER = """
++            attribute vec4 aPosition;
++            attribute vec2 aTextureCoordinate;
++            uniform mat4 uTextureMatrix;
++            varying vec2 vTextureCoordinate;
++            void main() {
++                gl_Position = aPosition;
++                vTextureCoordinate = (uTextureMatrix * vec4(aTextureCoordinate, 0.0, 1.0)).xy;
++            }
++        """
++
++        private const val FRAGMENT_SHADER = """
++            #extension GL_OES_EGL_image_external : require
++            precision mediump float;
++            uniform samplerExternalOES uTexture;
++            varying vec2 vTextureCoordinate;
++            void main() {
++                gl_FragColor = texture2D(uTexture, vTextureCoordinate);
++            }
++        """
++    }
++}
