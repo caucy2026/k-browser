@@ -79,6 +79,18 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 `cachedFrame=true` 重新绑定 TOP Surface。W3C 页面从 D2、D0 各滑动一次后，两屏仍为
 同一页面相邻区域，未发现 FATAL EXCEPTION。
 
+### 1.2.0-rc1 界面与硬件优化回归（2026-08-10）
+
+- 本地 APK 已成功覆盖安装到 `192.168.3.62:5555`，仅通过 LAUNCHER monkey 启动。
+- 冷启动确认 D2 为 `DualScreenTopActivity`，合成器绑定 TOP/BOTTOM，并收到首个
+  `1920x2560` Gecko 帧；D2 没有黑屏。
+- 首页实机确认旧的 Display 说明已移除，新体验文案、放大的首排按钮、“退出”、
+  天涯社区与 KEMI 知识库入口均已进入 APK；GitHub/Wikipedia 不再预置。
+- W3C 初始截图确认 D2/D0 显示同一页面的相邻上下区域，而非镜像。
+- 在继续执行 D0 滑动时 KOffice 重新占用主屏；被覆盖的截图已作废并立即停止输入。
+  因此 HOME 恢复、D0/D2 各自完整滑动、站点加载及退出联动仍需设备再次空闲后补测，
+  当前不得标记为完整通过。
+
 ## 6. `kemi-rd` 文档对当前实现的帮助
 
 - `chip.md` 明确设备逻辑显示为 D0/D2、分辨率均为 `1920×1280`，且 Display ID
@@ -115,3 +127,13 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 - 私钥、证书和本地口令文件统一保存在忽略目录 `keystore/`；该目录必须离线备份，
   后续升级包必须继续使用同一证书，否则 Android 无法覆盖安装。
 - 正式构建入口：`./scripts/build-release.sh <versionName>`。
+
+## 10. 当前备份点
+
+- 源码提交：`4a1e252959d8a8e77e05028811441a52f486e936`（0011 界面、站点、图标与硬件优化）。
+- 候选 APK：`bin/KBrowser-arm64.apk`，SHA-256：
+  `bee16cc15c05571a128524da59ff0b2917070af62f6e069ac7f23cc5c46e62bd`。
+- `browser` 子模块工作树保持补丁展开状态；唯一可复现来源是固定上游提交和
+  `patches/series` 的 0001–0011 顺序，不直接提交展开后的子模块指针。
+- 完整 Git bundle 存放在忽略目录 `artifacts/git-backups/`，生成后必须执行
+  `git bundle verify`。
