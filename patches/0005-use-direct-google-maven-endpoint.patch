@@ -1,0 +1,12 @@
+diff --git a/mozconfig.json b/mozconfig.json
+--- a/mozconfig.json
++++ b/mozconfig.json
+@@ -4,7 +4,7 @@
+         "GRADLE_MAVEN_REPOSITORIES": [
+             "https://maven.mozilla.org/maven2",
+             "https://plugins.gradle.org/m2",
+-            "https://maven.google.com",
++            "https://dl.google.com/dl/android/maven2",
+             "https://repo.maven.apache.org/maven2"
+         ]
+     }

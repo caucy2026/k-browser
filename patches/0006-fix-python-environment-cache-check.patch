@@ -1,0 +1,10 @@
+diff --git a/plugins/gradle-python-envs/src/main/groovy/com/jetbrains/python/envs/PythonEnvsPlugin.groovy b/plugins/gradle-python-envs/src/main/groovy/com/jetbrains/python/envs/PythonEnvsPlugin.groovy
+--- a/plugins/gradle-python-envs/src/main/groovy/com/jetbrains/python/envs/PythonEnvsPlugin.groovy
++++ b/plugins/gradle-python-envs/src/main/groovy/com/jetbrains/python/envs/PythonEnvsPlugin.groovy
+@@ -173,5 +173,6 @@ class PythonEnvsPlugin implements Plugin<Project> {
+         int exitValue
+         try {
++            def execOps = project.services.get(ExecOperations)
+             exitValue = execOps.exec { commandLine exec, "-c", "'print(1)'" }.exitValue
+         } catch (ignored) {
+             return false
