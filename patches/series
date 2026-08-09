@@ -2,3 +2,4 @@
 # Patches are applied in order by scripts/apply-patches.sh.
 patches/0001-add-dual-screen-browser-mode.patch
 patches/0002-add-browser-chrome-and-home.patch
+patches/0003-smooth-dual-screen-and-knowledge-home.patch

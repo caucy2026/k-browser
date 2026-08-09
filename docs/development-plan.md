@@ -7,8 +7,8 @@
 - 基于开源 Iceraven/Fenix 完整浏览器和独立 GeckoView 引擎，不使用系统 WebView。
 - 普通模式具备地址栏、标签页、下载、文件上传、权限和 Cookie 等浏览器能力。
 - 双屏模式启动 Display 2，并让一个网页形成 `1920 x 2560` 连续逻辑视口。
-- Display 0 显示逻辑区域 `y=0..1279`，Display 2 显示 `y=1280..2559`。
-- 两屏共享同一个页面、JavaScript 上下文、滚动状态和登录状态。
+- Display 2 显示逻辑区域 `y=0..1279`，Display 0 显示 `y=1280..2559`。
+- 当前阶段使用两个 GeckoSession 共享 URL、Cookie 与逻辑滚动位置；必须阻断程序化滚动反馈并按显示帧合并同步事件。
 - 两屏触摸统一映射到连续逻辑坐标。
 
 ### 首版不做
@@ -129,7 +129,7 @@ adb shell monkey -p io.github.forkmaintainers.iceraven -c android.intent.categor
 
 - 两屏临时使用两个页面实例。
 - 同步 URL、Cookie、缩放和滚动位置。
-- 副屏逻辑滚动偏移为主屏加 1280。
+- Display 0 的逻辑滚动偏移恒为 Display 2 加 1280。
 - 此实现只用于验证交互，验证完成后可替换。
 
 轻量测试页面：
@@ -147,7 +147,7 @@ adb shell monkey -p io.github.forkmaintainers.iceraven -c android.intent.categor
 
 - 一个网页实例使用 `1920 x 2560` 逻辑视口。
 - Chromium compositor 的同一帧裁切输出到两个 Android Surface。
-- 主屏取上半区域，副屏取下半区域。
+- Display 2 取上半区域，Display 0 取下半区域。
 - 副屏输入事件映射到连续坐标空间。
 - 两屏共享焦点、选择、缩放和滚动状态。
 
@@ -227,5 +227,5 @@ feat: split one compositor frame across displays
 5. 各抓取一张截图并运行 `scripts/check-activity-displays.sh` 闭环。
 
 当前原型使用两个共享 GeckoRuntime 的 GeckoSession；它不是系统 WebView。两屏共享
-Cookie 和逻辑滚动位置，副屏位置恒为主屏位置加一个屏幕高度。后续 M5 再把两个页面
+Cookie 和逻辑滚动位置，Display 0 位置恒为 Display 2 加一个屏幕高度。后续 M5 再把两个页面
 实例替换为单页面双 Surface，解决视频、Canvas 和页面内部瞬时状态重复的问题。

@@ -1,0 +1,274 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -5,23 +5,29 @@
+ import android.content.Context
+ import android.content.Intent
+ import android.graphics.Color
++import android.graphics.drawable.ColorDrawable
+ import android.graphics.drawable.GradientDrawable
+ import android.hardware.display.DisplayManager
+ import android.os.Bundle
+ import android.view.Display
+ import android.view.Gravity
++import android.view.MotionEvent
+ import android.view.View
+ import android.view.ViewGroup
+ import android.view.Window
+ import android.view.WindowInsets
+ import android.view.WindowInsetsController
++import android.view.WindowManager
+ import android.view.inputmethod.EditorInfo
+ import android.widget.EditText
+ import android.widget.FrameLayout
+ import android.widget.LinearLayout
+ import android.widget.TextView
++import mozilla.components.concept.engine.EngineSession.CookieBannerHandlingMode
++import mozilla.components.concept.engine.EngineSession.TrackingProtectionPolicy
+ import org.mozilla.fenix.ext.components
+ import org.mozilla.geckoview.GeckoSession
++import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
+ import org.mozilla.geckoview.GeckoView
+ import org.mozilla.geckoview.PanZoomController
+ import org.mozilla.geckoview.ScreenLength
+@@ -36,11 +42,15 @@
+     private lateinit var geckoView: GeckoView
+     private lateinit var session: GeckoSession
+     private var isSecondary = false
+-    private var lastAppliedLocalY: Int? = null
++    private var programmaticTargetY: Int? = null
++    private var programmaticGeneration = 0
++    private var pendingLogicalTop: Int? = null
++    private var syncFramePosted = false
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+         requestWindowFeature(Window.FEATURE_NO_TITLE)
++        configureTargetHardwareWindow()
+         isSecondary = intent.getBooleanExtra(EXTRA_SECONDARY, false)
+         val url = intent.getStringExtra(EXTRA_URL)
+             ?: intent.data?.getQueryParameter("url")
+@@ -51,14 +61,24 @@
+                 ViewGroup.LayoutParams.MATCH_PARENT,
+                 ViewGroup.LayoutParams.MATCH_PARENT,
+             )
++            setOnTouchListener { _, event ->
++                if (event.actionMasked == MotionEvent.ACTION_DOWN) cancelProgrammaticSync()
++                false
++            }
+         }
+         val root = FrameLayout(this).apply {
+             addView(geckoView)
+-            if (!isSecondary) addView(createToolbar())
++            if (isSecondary) addView(createToolbar())
+         }
+         setContentView(root)
+         enterFullscreen()
+ 
++        components.core.engine.settings.apply {
++            trackingProtectionPolicy = TrackingProtectionPolicy.strict()
++            cookieBannerHandlingMode = CookieBannerHandlingMode.REJECT_ALL
++            cookieBannerHandlingGlobalRules = true
++        }
++
+         session = GeckoSession().apply {
+             setProgressDelegate(object : GeckoSession.ProgressDelegate {
+                 override fun onPageStop(session: GeckoSession, success: Boolean) {
+@@ -70,18 +90,36 @@
+ 
+             setScrollDelegate(object : GeckoSession.ScrollDelegate {
+                 override fun onScrollChanged(session: GeckoSession, scrollX: Int, scrollY: Int) {
+-                    val expected = lastAppliedLocalY
+-                    if (expected != null && kotlin.math.abs(scrollY - expected) <= 2) {
+-                        lastAppliedLocalY = null
++                    val expected = programmaticTargetY
++                    if (expected != null) {
++                        if (kotlin.math.abs(scrollY - expected) <= SYNC_TOLERANCE_PX) {
++                            val generation = ++programmaticGeneration
++                            geckoView.postDelayed({
++                                if (generation == programmaticGeneration) programmaticTargetY = null
++                            }, SYNC_SETTLE_MS)
++                        }
+                         return
+                     }
+-                    val logicalTop = scrollY - if (isSecondary) 0 else geckoView.height
++                    val logicalTop = scrollY - if (isSecondary) 0 else TARGET_VIEWPORT_HEIGHT_PX
+                     DualScreenCoordinator.userScrolled(
+                         this@DualScreenBrowserActivity,
+                         logicalTop.coerceAtLeast(0),
+                     )
+                 }
+             })
++
++            setNavigationDelegate(object : GeckoSession.NavigationDelegate {
++                override fun onLocationChange(
++                    session: GeckoSession,
++                    url: String?,
++                    geckoPermissions: List<ContentPermission>,
++                    hasUserGesture: Boolean,
++                ) {
++                    if (url != null && hasUserGesture) {
++                        DualScreenCoordinator.navigationFrom(this@DualScreenBrowserActivity, url)
++                    }
++                }
++            })
+             open(components.core.geckoRuntime)
+         }
+         geckoView.setSession(session)
+@@ -97,11 +135,11 @@
+             gravity = Gravity.CENTER_VERTICAL
+             setPadding(dp(6), dp(5), dp(6), dp(5))
+             background = GradientDrawable().apply {
+-                setColor(Color.argb(248, 248, 250, 253))
++                setColor(Color.rgb(248, 250, 253))
+                 cornerRadius = dp(10).toFloat()
+                 setStroke(dp(1), Color.rgb(220, 225, 234))
+             }
+-            elevation = dp(5).toFloat()
++            elevation = 0f
+             layoutParams = FrameLayout.LayoutParams(
+                 FrameLayout.LayoutParams.MATCH_PARENT,
+                 dp(56),
+@@ -193,16 +231,38 @@
+         super.onDestroy()
+     }
+ 
+-    fun applyLogicalTop(logicalTop: Int) {
+-        val localY = logicalTop + if (isSecondary) 0 else geckoView.height
+-        lastAppliedLocalY = localY
++    fun queueLogicalTop(logicalTop: Int) {
++        pendingLogicalTop = logicalTop
++        if (syncFramePosted) return
++        syncFramePosted = true
++        geckoView.postOnAnimation {
++            syncFramePosted = false
++            val next = pendingLogicalTop
++            pendingLogicalTop = null
++            if (next != null) applyLogicalTop(next)
++        }
++    }
++
++    private fun applyLogicalTop(logicalTop: Int) {
++        val localY = logicalTop + if (isSecondary) 0 else TARGET_VIEWPORT_HEIGHT_PX
++        programmaticTargetY = localY
++        val generation = ++programmaticGeneration
+         session.panZoomController.scrollTo(
+             ScreenLength.zero(),
+             ScreenLength.fromPixels(localY.toDouble()),
+             PanZoomController.SCROLL_BEHAVIOR_AUTO,
+         )
++        geckoView.postDelayed({
++            if (generation == programmaticGeneration) programmaticTargetY = null
++        }, SYNC_TIMEOUT_MS)
+     }
+ 
++    private fun cancelProgrammaticSync() {
++        programmaticGeneration++
++        programmaticTargetY = null
++        pendingLogicalTop = null
++    }
++
+     private fun launchSecondary(url: String) {
+         val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+         val secondary = manager.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+@@ -231,11 +291,33 @@
+                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+     }
+ 
++    private fun configureTargetHardwareWindow() {
++        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
++        window.setBackgroundDrawable(ColorDrawable(Color.WHITE))
++        val targetMode = display?.supportedModes?.firstOrNull {
++            it.physicalWidth == TARGET_WIDTH_PX &&
++                it.physicalHeight == TARGET_VIEWPORT_HEIGHT_PX &&
++                kotlin.math.abs(it.refreshRate - TARGET_REFRESH_RATE) < 0.1f
++        }
++        if (targetMode != null) {
++            window.attributes = window.attributes.apply {
++                preferredDisplayModeId = targetMode.modeId
++                preferredRefreshRate = TARGET_REFRESH_RATE
++            }
++        }
++    }
++
+     companion object {
+         const val EXTRA_URL = "url"
+         const val EXTRA_SECONDARY = "secondary"
+         const val HOME_URL = "resource://android/assets/dual_screen_home.html"
+         const val DEFAULT_URL = HOME_URL
++        const val SYNC_TOLERANCE_PX = 3
++        const val SYNC_SETTLE_MS = 34L
++        const val SYNC_TIMEOUT_MS = 120L
++        const val TARGET_WIDTH_PX = 1920
++        const val TARGET_VIEWPORT_HEIGHT_PX = 1280
++        const val TARGET_REFRESH_RATE = 60f
+     }
+ }
+ 
+@@ -261,17 +343,24 @@
+ 
+     @Synchronized
+     fun surfaceReady(activity: DualScreenBrowserActivity) {
+-        activity.applyLogicalTop(logicalTop)
++        activity.queueLogicalTop(logicalTop)
+     }
+ 
+     @Synchronized
+     fun userScrolled(source: DualScreenBrowserActivity, newLogicalTop: Int) {
+         logicalTop = newLogicalTop
+         val peer = if (primary.get() === source) secondary.get() else primary.get()
+-        peer?.runOnUiThread { peer.applyLogicalTop(logicalTop) }
++        peer?.runOnUiThread { peer.queueLogicalTop(logicalTop) }
+     }
+ 
+     @Synchronized
++    fun navigationFrom(source: DualScreenBrowserActivity, url: String) {
++        logicalTop = 0
++        val peer = if (primary.get() === source) secondary.get() else primary.get()
++        peer?.runOnUiThread { peer.loadUrl(url) }
++    }
++
++    @Synchronized
+     fun navigate(url: String) {
+         logicalTop = 0
+         primary.get()?.runOnUiThread { primary.get()?.loadUrl(url) }
+diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dual_screen_home.html
+--- a/app/src/main/assets/dual_screen_home.html
++++ b/app/src/main/assets/dual_screen_home.html
+@@ -18,22 +18,22 @@
+ </head>
+ <body>
+   <h1>双屏浏览器</h1>
+-  <p class="sub">在上方地址栏输入网址或关键词，网页将在两块屏幕上连续显示。</p>
++  <p class="sub">知识、文档与学习站点。网页将在两块屏幕上连续显示。</p>
+   <div class="grid">
+-    <a href="https://www.baidu.com/">百度<span>搜索与资讯</span></a>
+-    <a href="https://www.bilibili.com/">哔哩哔哩<span>视频与社区</span></a>
++    <a href="https://www.baidu.com/">百度<span>知识搜索</span></a>
++    <a href="https://baike.baidu.com/">百度百科<span>中文百科</span></a>
+     <a href="https://www.zhihu.com/">知乎<span>问答社区</span></a>
+-    <a href="https://www.taobao.com/">淘宝<span>购物</span></a>
+-    <a href="https://www.jd.com/">京东<span>购物</span></a>
+-    <a href="https://www.sina.com.cn/">新浪<span>新闻资讯</span></a>
+-    <a href="https://www.163.com/">网易<span>新闻与邮箱</span></a>
+-    <a href="https://www.qq.com/">腾讯网<span>综合资讯</span></a>
+-    <a href="https://www.sogou.com/">搜狗<span>搜索</span></a>
+-    <a href="https://www.cctv.com/">央视网<span>视频与新闻</span></a>
+-    <a href="https://map.baidu.com/">百度地图<span>地图与出行</span></a>
+-    <a href="https://www.douyin.com/">抖音<span>短视频</span></a>
++    <a href="https://zh.wikipedia.org/">维基百科<span>开放百科</span></a>
++    <a href="https://developer.mozilla.org/zh-CN/">MDN<span>Web 开发文档</span></a>
++    <a href="https://www.w3.org/">W3C<span>Web 标准</span></a>
++    <a href="https://www.cnki.net/">中国知网<span>学术检索</span></a>
++    <a href="https://www.nlc.cn/">国家图书馆<span>文献资源</span></a>
++    <a href="https://www.icourse163.org/">中国大学MOOC<span>在线课程</span></a>
++    <a href="https://www.guokr.com/">果壳<span>科学知识</span></a>
++    <a href="https://github.com/">GitHub<span>开源代码</span></a>
++    <a href="https://www.oschina.net/">开源中国<span>技术社区</span></a>
+   </div>
+-  <div class="guide">主屏显示网页上半部分，副屏承接下一屏内容；在任意屏幕滑动，两屏会一起滚动。</div>
++  <div class="guide">Display 2 显示第一页，Display 0 无缝承接下一页；任意屏幕滑动时按帧同步。</div>
+   <div class="spacer">下方内容用于展示双屏连续区域</div>
+ </body>
+ </html>
+

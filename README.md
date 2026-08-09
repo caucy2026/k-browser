@@ -19,6 +19,7 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 ```
 
 完整开发流程见 [docs/development-plan.md](docs/development-plan.md)。
+目标设备的固定参数与性能约束见 [docs/hardware-profile.md](docs/hardware-profile.md)。
 
 ## CI 架构
 
