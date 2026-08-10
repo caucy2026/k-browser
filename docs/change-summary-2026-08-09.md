@@ -227,6 +227,18 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 - 候选 APK：`bin/KBrowser-arm64.apk`，SHA-256 以同目录
   `bin/KBrowser-arm64.apk.sha256` 为准。
 - `browser` 子模块工作树保持补丁展开状态；唯一可复现来源是固定上游提交和
-  `patches/series` 的 0001–0019 顺序，不直接提交展开后的子模块指针。
+  `patches/series` 的 0001–0023 顺序，不直接提交展开后的子模块指针。
 - 完整 Git bundle 存放在忽略目录 `artifacts/git-backups/`，生成后必须执行
   `git bundle verify`。
+
+### 1.2.0-rc16 干净开源界面（2026-08-10）
+
+- 禁用首次启动、持续引导和服务条款推广弹窗，并移除 Firefox/Mozilla 账户注册菜单与设置入口。
+- 禁用 Pocket 内容推荐、Contile、Firefox Suggest 的赞助/非赞助远程推荐和默认浏览器横幅。
+- 遥测、营销遥测、每日使用 Ping、Nimbus 实验与远程 rollout 在 KEMI 构建中强制关闭；每次启动
+  重新应用，避免升级安装继承旧版开关。
+- 单屏界面的上游品牌资源覆盖为“KEMI 双屏浏览器”；Gecko 继续作为 MPL 开源渲染引擎，
+  不表示产品从属于 Firefox。
+- 本地完整 release 构建 4215 个任务通过，lint 0 错误/0 警告，APK v2/v3 签名验证通过；
+  SHA-256：`6d85345838d06613200896131a8934e7d82161f0b18826143ad4f22eaed8473c`。
+- 62、63 在构建完成时均未建立 ADB 连接，因此本条只记录构建闭环，不把界面真机检查标记为通过。

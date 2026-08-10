@@ -1,0 +1,61 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 0edbc16..1735884 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -423,7 +423,6 @@ class DualScreenBrowserActivity : AppCompatActivity() {
+                             addItem(5, 4, "复制图片或媒体地址", android.R.drawable.ic_menu_save)
+                         }
+                     }
+-                    val selectedText = DualScreenCoordinator.selectedText()
+                     addItem(6, 6, "复制所选内容", android.R.drawable.ic_menu_edit)
+                     val clipboard =
+                         getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+@@ -450,7 +449,7 @@ class DualScreenBrowserActivity : AppCompatActivity() {
+                             3 -> copyText("链接文字", linkText.orEmpty())
+                             4 -> DualScreenCoordinator.navigate(mediaUri.orEmpty())
+                             5 -> copyText("媒体地址", mediaUri.orEmpty())
+-                            6 -> copySelectedText(selectedText ?: linkText)
++                            6 -> copySelectedText(linkText)
+                             7 -> performTextAction(android.R.id.paste, "已粘贴")
+                             10 -> DualScreenCoordinator.goBack()
+                             11 -> DualScreenCoordinator.goForward()
+@@ -479,13 +478,32 @@ class DualScreenBrowserActivity : AppCompatActivity() {
+         Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
+     }
+ 
+-    private fun copySelectedText(value: String?) {
+-        if (value.isNullOrBlank()) {
+-            Toast.makeText(this, "请先选择要复制的内容", Toast.LENGTH_SHORT).show()
+-            return
++    private fun copySelectedText(linkTextFallback: String?) {
++        // Desktop-style mouse selection does not invoke SelectionActionDelegate.
++        // Ask Gecko's InputConnection to execute the browser's native copy action
++        // so the current DOM selection is copied even when no editor is focused.
++        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++        val beforeTimestamp = clipboard.primaryClipDescription?.timestamp
++        val reportedSuccess = DualScreenCoordinator.performTextContextAction(
++            browserSurface,
++            android.R.id.copy,
++        )
++        val afterTimestamp = clipboard.primaryClipDescription?.timestamp
++        val copiedByGecko = reportedSuccess ||
++            (clipboard.hasPrimaryClip() && afterTimestamp != null && afterTimestamp != beforeTimestamp)
++        if (copiedByGecko) {
++            Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
++            DualScreenCoordinator.clearSelectedText()
++            return
++        }
++        val rememberedSelection = DualScreenCoordinator.selectedText()
++        val fallback = rememberedSelection?.takeIf { it.isNotBlank() }
++            ?: linkTextFallback?.takeIf { it.isNotBlank() }
++        if (fallback != null) {
++            copyText("所选内容", fallback)
++            DualScreenCoordinator.clearSelectedText()
++        } else {
++            Toast.makeText(this, "请先选择要复制的内容", Toast.LENGTH_SHORT).show()
+         }
+-        copyText("所选内容", value)
+-        DualScreenCoordinator.clearSelectedText()
+     }
+ 
+     private fun performTextAction(actionId: Int, successMessage: String) {

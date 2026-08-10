@@ -1,0 +1,173 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/FeatureFlags.kt b/app/src/main/java/org/mozilla/fenix/FeatureFlags.kt
+index 86273ea..5936a70 100644
+--- a/app/src/main/java/org/mozilla/fenix/FeatureFlags.kt
++++ b/app/src/main/java/org/mozilla/fenix/FeatureFlags.kt
+@@ -25,7 +25,7 @@ object FeatureFlags {
+     /**
+      * Allows users to enable Firefox Suggest.
+      */
+-    const val FX_SUGGEST = true
++    const val FX_SUGGEST = false
+ 
+     /**
+      * Disables the Onboarding feature for debug builds by default. Set this to `true` if you need
+@@ -33,7 +33,7 @@ object FeatureFlags {
+      *
+      * ⚠️ DO NOT MODIFY THIS FLAG IN PRODUCTION.
+      */
+-    val onboardingFeatureEnabled = !Config.channel.isDebug
++    const val onboardingFeatureEnabled = false
+ 
+     /**
+      * Enables Firefox Labs.
+diff --git a/app/src/main/java/org/mozilla/fenix/FenixApplication.kt b/app/src/main/java/org/mozilla/fenix/FenixApplication.kt
+index 3703fd4..67405e9 100644
+--- a/app/src/main/java/org/mozilla/fenix/FenixApplication.kt
++++ b/app/src/main/java/org/mozilla/fenix/FenixApplication.kt
+@@ -294,6 +294,8 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
+         // Initialize Nimbus and its backend.
+         initializeNimbus()
+ 
++        configureKemiCleanBrowser()
++
+         ProfilerMarkerFactProcessor.create { components.core.engine.profiler }.register()
+ 
+         applicationScope.launch {
+@@ -353,6 +355,31 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
+         runBlockingIncrement { megazordDeferred.await() }
+     }
+ 
++    /**
++     * Keep the KEMI build free of upstream onboarding, account promotion, sponsored content,
++     * experiments and marketing telemetry. These values are applied on every launch so an
++     * upgraded installation cannot restore an old Firefox/Iceraven promotional preference.
++     */
++    private fun configureKemiCleanBrowser() {
++        components.settings.apply {
++            onboardingFeatureEnabled = false
++            enablePersistentOnboarding = false
++            continuousOnboardingFeatureEnabled = false
++            shouldShowSignInButton = false
++            showPocketRecommendationsFeature = false
++            showContileFeature = false
++            showSponsoredSuggestions = false
++            showNonSponsoredSuggestions = false
++            isTermsOfUsePromptEnabled = false
++            isTelemetryEnabled = false
++            isMarketingTelemetryEnabled = false
++            isDailyUsagePingEnabled = false
++            isExperimentationEnabled = false
++            isRolloutsEnabled = false
++        }
++        components.fenixOnboarding.finish()
++    }
++
+     /**
+      * The remainder of main-process initialization happens here now that we have ensured the
+      * application-services initialization is completed. This also queues a bunch of follow-up
+diff --git a/app/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt b/app/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt
+index f7d2788..e60c344 100644
+--- a/app/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt
++++ b/app/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt
+@@ -683,7 +683,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
+                                     canGoForward = selectedTab?.content?.canGoForward ?: true,
+                                     extensionsMenuItemDescription = extensionsMenuItemDescription,
+                                     scrollState = scrollState,
+-                                    showBanner = shouldShowMenuBanner && !defaultBrowser,
++                                    showBanner = false,
+                                     isDownloadHighlighted = isDownloadHighlighted,
+                                     webExtensionMenuCount = webExtensionsCount,
+                                     isAllWebExtensionsDisabled = isAllWebExtensionsDisabled,
+diff --git a/app/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt b/app/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt
+index 54049c6..770e6c4 100644
+--- a/app/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt
++++ b/app/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt
+@@ -56,7 +56,6 @@ import org.mozilla.fenix.components.menu.MenuAccessPoint
+ import org.mozilla.fenix.components.menu.MenuDialogTestTag.DESKTOP_SITE_OFF
+ import org.mozilla.fenix.components.menu.MenuDialogTestTag.DESKTOP_SITE_ON
+ import org.mozilla.fenix.components.menu.MenuDialogTestTag.MORE_OPTION_CHEVRON
+-import org.mozilla.fenix.components.menu.compose.header.MozillaAccountMenuItem
+ import org.mozilla.fenix.components.menu.store.IPProtectionMenuState
+ import org.mozilla.fenix.components.menu.store.WebExtensionMenuItem
+ import org.mozilla.fenix.theme.FirefoxTheme
+@@ -322,13 +321,6 @@ fun MainMenu(
+         )
+ 
+         MenuGroup {
+-            MozillaAccountMenuItem(
+-                account = account,
+-                accountState = accountState,
+-                isPrivate = isPrivate,
+-                onClick = onMozillaAccountButtonClick,
+-            )
+-
+             if (accessPoint == MenuAccessPoint.Home) {
+                 MenuItem(
+                     label = stringResource(id = R.string.browser_menu_change_wallpaper),
+diff --git a/app/src/main/java/org/mozilla/fenix/settings/CustomizationFragment.kt b/app/src/main/java/org/mozilla/fenix/settings/CustomizationFragment.kt
+index ad6ef63..fd2fa2c 100644
+--- a/app/src/main/java/org/mozilla/fenix/settings/CustomizationFragment.kt
++++ b/app/src/main/java/org/mozilla/fenix/settings/CustomizationFragment.kt
+@@ -397,8 +397,9 @@ class CustomizationFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFrag
+ 
+ 
+         requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_sign_in_button).apply {
+-            isChecked = context.components.settings.shouldShowSignInButton
+-            onPreferenceChangeListener = SharedPreferenceUpdater()
++            isChecked = false
++            isVisible = false
++            context.components.settings.shouldShowSignInButton = false
+         }
+     }
+ 
+diff --git a/app/src/main/java/org/mozilla/fenix/settings/account/AccountUiView.kt b/app/src/main/java/org/mozilla/fenix/settings/account/AccountUiView.kt
+index a5239ae..7c4f3a0 100644
+--- a/app/src/main/java/org/mozilla/fenix/settings/account/AccountUiView.kt
++++ b/app/src/main/java/org/mozilla/fenix/settings/account/AccountUiView.kt
+@@ -46,6 +46,14 @@ class AccountUiView(
+      * Possible conditions are logged-in without problems, logged-out, and logged-in but needs to re-authenticate.
+      */
+     fun updateAccountUIState(context: Context, profile: Profile?) {
++        if (!context.components.settings.shouldShowSignInButton) {
++            preferenceSignIn.isVisible = false
++            preferenceFirefoxAccount.isVisible = false
++            preferenceFirefoxAccountAuthError.isVisible = false
++            accountPreferenceCategory.isVisible = false
++            return
++        }
++
+         val account = accountManager.authenticatedAccount()
+ 
+         // Signed-in, no problems.
+diff --git a/app/src/main/java/org/mozilla/fenix/utils/Settings.kt b/app/src/main/java/org/mozilla/fenix/utils/Settings.kt
+index eaec5fe..c7cda31 100644
+--- a/app/src/main/java/org/mozilla/fenix/utils/Settings.kt
++++ b/app/src/main/java/org/mozilla/fenix/utils/Settings.kt
+@@ -1549,7 +1549,7 @@ class Settings(
+ 
+     var shouldShowSignInButton by booleanPreference(
+         appContext.getPreferenceKey(R.string.pref_key_show_sign_in_button),
+-        default = true,
++        default = false,
+     )
+
+     var shouldUseDefaultHomepage by booleanPreference(
+@@ -2298,7 +2298,7 @@ class Settings(
+      */
+     var continuousOnboardingFeatureEnabled by booleanPreference(
+         key = appContext.getPreferenceKey(R.string.pref_key_continuous_onboarding_enabled),
+-        default = { FxNimbus.features.continuousOnboarding.value().enabled },
++        default = false,
+     )
+ 
+     /**
+diff --git a/app/src/forkRelease/res/values/static_strings.xml b/app/src/forkRelease/res/values/static_strings.xml
+--- a/app/src/forkRelease/res/values/static_strings.xml
++++ b/app/src/forkRelease/res/values/static_strings.xml
+@@ -6,4 +6,6 @@
+     <!-- Name of the application -->
+     <string name="app_name" translatable="false">双屏浏览器</string>
++    <string name="firefox" translatable="false">KEMI 双屏浏览器</string>
++    <string name="app_name_firefox" translatable="false">KEMI 双屏浏览器</string>
+     <string name="home_screen_shortcut_single_screen" translatable="false">单屏模式</string>
+ </resources>

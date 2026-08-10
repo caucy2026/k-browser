@@ -1,0 +1,113 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/HomeActivity.kt b/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
+index d1f7679..cd6749c 100644
+--- a/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
+@@ -6,6 +6,7 @@ import android.app.assist.AssistContent
++import android.content.ClipboardManager
+ import android.content.ComponentName
+ import android.content.Context
+ import android.content.Intent
+@@ -19,12 +20,16 @@ import android.text.format.DateUtils
+ import android.util.AttributeSet
+ import android.view.ActionMode
++import android.view.InputDevice
+ import android.view.KeyEvent
+ import android.view.LayoutInflater
+ import android.view.MotionEvent
+ import android.view.View
+ import android.view.ViewConfiguration
+ import android.view.ViewGroup
++import android.view.inputmethod.EditorInfo
+ import android.view.WindowManager.LayoutParams.FLAG_SECURE
++import android.widget.FrameLayout
++import android.widget.PopupMenu
++import android.widget.Toast
+@@ -372,6 +377,8 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
+ 
+     private var actionMode: ActionMode? = null
++    private var lastMouseX = 0f
++    private var lastMouseY = 0f
+@@ -1131,10 +1138,69 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
+     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+         ProfilerMarkers.addForDispatchTouchEvent(components.core.engine.profiler, ev)
++        if (ev != null && ev.isFromSource(InputDevice.SOURCE_MOUSE) && ev.pointerCount > 0) {
++            lastMouseX = ev.x
++            lastMouseY = ev.y
++        }
+         return super.dispatchTouchEvent(ev)
+     }
+ 
+     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
++        // The target hardware reports the secondary mouse button as Android Back.
++        // Intercept it before browser navigation and expose desktop-style text actions.
++        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.isFromSource(InputDevice.SOURCE_MOUSE)) {
++            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
++                showHardwareMouseTextMenu()
++            }
++            return true
++        }
+         // The KEYCODE_MENU event is handled here instead of onKeyDown or onKeyUp because
+@@ -1162,6 +1228,51 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
+         return super.dispatchKeyEvent(event)
+     }
++
++    private fun showHardwareMouseTextMenu() {
++        val root = findViewById<FrameLayout>(android.R.id.content) ?: return
++        val textTarget = currentFocus
++        val anchor = View(this).apply {
++            layoutParams = FrameLayout.LayoutParams(1, 1).apply {
++                leftMargin = lastMouseX.toInt().coerceIn(0, (root.width - 1).coerceAtLeast(0))
++                topMargin = lastMouseY.toInt().coerceIn(0, (root.height - 1).coerceAtLeast(0))
++            }
++        }
++        root.addView(anchor)
++        anchor.post {
++            if (anchor.parent == null || isFinishing) return@post
++            PopupMenu(this, anchor).apply {
++                setForceShowIcon(true)
++                menu.add(0, android.R.id.copy, 0, "复制所选内容")
++                    .setIcon(android.R.drawable.ic_menu_edit)
++                menu.add(0, android.R.id.paste, 1, "粘贴")
++                    .setIcon(android.R.drawable.ic_menu_send)
++                    .isEnabled = (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
++                    .hasPrimaryClip()
++                menu.add(0, android.R.id.selectAll, 2, "全选")
++                    .setIcon(android.R.drawable.ic_menu_set_as)
++                setOnMenuItemClickListener { item ->
++                    val success = if (item.itemId == android.R.id.copy) {
++                        performFocusedCopy(textTarget)
++                    } else {
++                        performFocusedTextAction(textTarget, item.itemId)
++                    }
++                    Toast.makeText(
++                        this@HomeActivity,
++                        if (success) {
++                            if (item.itemId == android.R.id.paste) "已粘贴" else "已复制"
++                        } else {
++                            if (item.itemId == android.R.id.copy) "请先选择要复制的内容"
++                            else "当前页面没有可操作的文字输入位置"
++                        },
++                        Toast.LENGTH_SHORT,
++                    ).show()
++                    true
++                }
++                setOnDismissListener { root.removeView(anchor) }
++                show()
++            }
++        }
++    }
++
++    private fun performFocusedTextAction(target: View?, actionId: Int): Boolean {
++        target ?: return false
++        val connection = target.onCreateInputConnection(EditorInfo()) ?: return false
++        return connection.performContextMenuAction(actionId)
++    }
++
++    private fun performFocusedCopy(target: View?): Boolean {
++        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++        val beforeTimestamp = clipboard.primaryClipDescription?.timestamp
++        val reportedSuccess = performFocusedTextAction(target, android.R.id.copy)
++        val afterTimestamp = clipboard.primaryClipDescription?.timestamp
++        return reportedSuccess ||
++            (clipboard.hasPrimaryClip() && afterTimestamp != null && afterTimestamp != beforeTimestamp)
++    }
