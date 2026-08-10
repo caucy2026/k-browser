@@ -78,6 +78,7 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 
 完整开发流程见 [docs/development-plan.md](docs/development-plan.md)。
 目标设备的固定参数与性能约束见 [docs/hardware-profile.md](docs/hardware-profile.md)。
+版本与全部定制内容见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## CI 架构
 
