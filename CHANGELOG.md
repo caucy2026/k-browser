@@ -3,7 +3,7 @@
 本文记录 KEMI 双屏浏览器相对固定 Iceraven/Fenix 上游的定制内容。可复现源码以
 `build/upstream.env` 指定的上游提交和 `patches/series` 的顺序为准。
 
-## 1.2.0-rc5（2026-08-10）
+## 1.2.0-rc6（2026-08-10）
 
 当前真机候选版本，APK 位于本地忽略目录 `bin/`，不提交到 GitHub。
 
@@ -33,15 +33,16 @@
   中国知网、国家图书馆、中国大学 MOOC、果壳、开源中国和 KEMI 知识库。
 - 天涯收藏固定为 `https://www.tianya.net/index.html`。
 - 接管网页 `target=_blank` 新窗口请求，在当前共享 GeckoSession 打开，避免点击无响应或两屏分叉。
+- 为跨屏共享 Surface 恢复 Gecko 原生 `InputConnection`；触摸任意屏网页输入框时，将输入焦点绑定到该屏真实 Activity，软键盘和按键事件直接交给同一 GeckoSession。
 - 默认启用严格跟踪保护；购物站和境内访问不稳定的默认入口已移除。
 
 ### 构建与发布
 
 - 本地构建优先，GitHub Actions 仅用于干净环境回归和临时候选产物。
-- 固定上游提交，支持递归子模块、隔离 Python/PyYAML 环境和 0001–0015 补丁顺序重放。
+- 固定上游提交，支持递归子模块、隔离 Python/PyYAML 环境和 0001–0016 补丁顺序重放。
 - 本地脚本自动发现 JDK 17、Android SDK，执行 arm64 Release、R8、资源优化和签名校验。
 - 正式签名文件存放在被忽略的 `keystore/`，必须离线备份，禁止上传 GitHub。
-- rc5 本地构建完成 4215 个 Gradle 任务，并通过 APK v2/v3 签名校验。
+- rc6 本地构建完成 4215 个 Gradle 任务，并通过 APK v2/v3 签名校验。
 
 ### 真机验证
 
@@ -49,7 +50,8 @@
 - 192.168.3.63：验证 rc5 工具栏比例、D0/D2 Activity、同一张 `1920×2560` Gecko 首帧。
 - 天涯两篇帖子和帖子第 2 页可正常打开；部分栏目由天涯自身提示分阶段恢复，不属于浏览器故障。
 - 百度、知乎、MDN 和 KEMI 知识库完成轻量加载回归，未发现 `FATAL EXCEPTION`。
-- rc5 APK SHA-256：`39a9b8ba4fa3e5ce3f3e6488419e7f352b39e6f0229df57cb9badab561b833b1`。
+- 192.168.3.63：主页搜索框、screensaver 账号框和密码框均在 Display 2 弹出软键盘并实际接收输入；IME client、focused window 和 input target 均属于 Display 2 的真实 Activity。
+- rc6 APK SHA-256：`8f0142cbf26953fec7b3e7755bd22d7b6bc9b597ca84431af35cfc8bf3ba991e`。
 
 ## 补丁索引
 
@@ -70,6 +72,7 @@
 | 0013 | 恢复原图标轮廓并处理 `target=_blank` 站内链接 |
 | 0014 | 任意屏返回、退出、HOME 时同步关闭另一屏 |
 | 0015 | 收紧“前往/退出”按钮比例和间距 |
+| 0016 | 为共享 Gecko Surface 恢复网页输入连接、软键盘和硬键事件转发 |
 
 ## 仓库备份规则
 
@@ -77,4 +80,3 @@
 - GitHub 不保存：`bin/` APK、`test-results/` 截图/视频、`.tools/`、`keystore/` 和设备本地配置。
 - `browser/` 远端只保存固定上游子模块指针；开发机的补丁展开状态显示为 `m browser` 属于预期。
 - 其他开发者克隆后运行 `./scripts/prepare-source.sh`，即可恢复全部定制源码。
-

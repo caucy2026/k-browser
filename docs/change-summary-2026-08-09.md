@@ -134,6 +134,21 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 - 63 真机收起远程控制侧栏后验证：工具栏完整显示、按钮比例协调，D0/D2 双屏 Activity 同时运行。
 - APK SHA-256：`39a9b8ba4fa3e5ce3f3e6488419e7f352b39e6f0229df57cb9badab561b833b1`。
 
+### 1.2.0-rc6 网页输入与软键盘修复（2026-08-10）
+
+- 根因是双屏合成改用普通 `SurfaceView` 后，只转发了 Gecko 触摸事件，没有暴露 Gecko
+  `SessionTextInput` 的 Android `InputConnection`；网页虽然收到点击，输入法却找不到文本编辑目标。
+- 增加 `GeckoInputSurface`，将 `onCreateInputConnection`、返回键前置事件和完整硬键事件交给
+  同一个 GeckoSession 的 `SessionTextInput`。
+- 每次任意屏 `ACTION_DOWN` 都把 Gecko 文本输入 view 切换到实际触摸屏的 Surface，并请求真实
+  Activity 焦点，符合 `kemi-rd/md/cross-display-keyboard.md` 的目标窗口输入原则。
+- 63 真机验证：首页搜索框可弹出软键盘并输入 `rc6input`；
+  `https://www.newlinksz.cn/screensaver/main/login` 的账号、密码框均可弹出软键盘并分别接收输入。
+- `dumpsys input_method` 确认 client、focused window 和 IME input target 均在 Display 2，
+  `mInputShown=true`；logcat 未发现 `FATAL EXCEPTION`。
+- 本地完整构建通过（4215 个任务），APK v2/v3 签名校验通过；APK SHA-256：
+  `8f0142cbf26953fec7b3e7755bd22d7b6bc9b597ca84431af35cfc8bf3ba991e`。
+
 ## 6. `kemi-rd` 文档对当前实现的帮助
 
 - `chip.md` 明确设备逻辑显示为 D0/D2、分辨率均为 `1920×1280`，且 Display ID
@@ -175,8 +190,8 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 
 - 源码以 `main` 最新提交为准，补丁序列可在固定上游提交上完整重放。
 - 候选 APK：`bin/KBrowser-arm64.apk`，SHA-256：
-  `39a9b8ba4fa3e5ce3f3e6488419e7f352b39e6f0229df57cb9badab561b833b1`。
+  `8f0142cbf26953fec7b3e7755bd22d7b6bc9b597ca84431af35cfc8bf3ba991e`。
 - `browser` 子模块工作树保持补丁展开状态；唯一可复现来源是固定上游提交和
-  `patches/series` 的 0001–0015 顺序，不直接提交展开后的子模块指针。
+  `patches/series` 的 0001–0016 顺序，不直接提交展开后的子模块指针。
 - 完整 Git bundle 存放在忽略目录 `artifacts/git-backups/`，生成后必须执行
   `git bundle verify`。
