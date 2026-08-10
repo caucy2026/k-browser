@@ -13,7 +13,7 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
   显示顶部，Display 0 显示紧接其后的底部，不是两个网页互相复制。
 - 任意屏返回、退出或离开都会同步结束另一屏；默认双屏，长按图标可进入单屏模式。
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
-- 当前补丁序列为 0001–0024，最新本地候选版本为 `1.2.0-rc17`。
+- 当前可复现补丁入口为 0001–0020 + 0025，最新本地候选版本为 `1.2.0-rc19`。
 - KEMI 构建不显示 Firefox/Iceraven 注册、首次引导、Pocket/赞助内容或默认浏览器推广；
   Gecko 仅作为开源网页引擎保留。
 
@@ -35,7 +35,7 @@ KBROWSER_VERSION_NAME=1.2.0-local ./scripts/build-local.sh
 1. 初始化所有递归子模块。
 2. 校验 Iceraven 固定提交，防止在错误上游版本打补丁。
 3. 执行 Iceraven 自身的 Android Components 准备步骤。
-4. 按 `patches/series` 顺序应用 KBrowser 0001–0015 补丁。
+4. 按 `patches/series` 顺序应用全部 KBrowser 补丁。
 
 如果系统 Python 尚未安装 PyYAML，脚本会在被忽略的 `.tools/prepare-venv` 中创建独立
 虚拟环境并安装固定版本，不修改系统 Python。

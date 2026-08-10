@@ -1,0 +1,872 @@
+diff --git a/android-components/components/concept/engine/src/main/java/mozilla/components/concept/engine/EngineView.kt b/android-components/components/concept/engine/src/main/java/mozilla/components/concept/engine/EngineView.kt
+index 321481a..95996d6 100644
+--- a/android-components/components/concept/engine/src/main/java/mozilla/components/concept/engine/EngineView.kt
++++ b/android-components/components/concept/engine/src/main/java/mozilla/components/concept/engine/EngineView.kt
+@@ -80,6 +80,18 @@ interface EngineView {
+      */
+     fun canClearSelection(): Boolean = false
+ 
++    /** Copy the active web-content selection into the system clipboard. */
++    fun copySelection(): Boolean = false
++
++    /** Preserve the current selection before a hardware context menu hides it. */
++    fun preserveSelection(): Boolean = false
++
++    /** Paste the system clipboard into the active editable web-content selection. */
++    fun pasteSelection(): Boolean = false
++
++    /** Select all content in the active web-content selection. */
++    fun selectAllSelection(): Boolean = false
++
+     /**
+      * Running flow of the current scroll position in pixels.
+      */
+diff --git a/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/GeckoEngineView.kt b/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/GeckoEngineView.kt
+index aed4551..48ec01c 100644
+--- a/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/GeckoEngineView.kt
++++ b/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/GeckoEngineView.kt
+@@ -4,11 +4,17 @@
+ 
+ package mozilla.components.browser.engine.gecko
+ 
++import android.content.ClipData
++import android.content.ClipboardManager
+ import android.content.Context
+ import android.content.res.Configuration
+ import android.graphics.Bitmap
+ import android.graphics.Color
++import android.os.SystemClock
+ import android.util.AttributeSet
++import android.view.InputDevice
++import android.view.KeyCharacterMap
++import android.view.KeyEvent
+ import android.widget.FrameLayout
+ import androidx.annotation.VisibleForTesting
+ import androidx.core.view.ViewCompat
+@@ -193,6 +199,67 @@ class GeckoEngineView @JvmOverloads constructor(
+ 
+     override fun canClearSelection() = !currentSelection?.selection?.text.isNullOrEmpty()
+ 
++    override fun copySelection(): Boolean {
++        val selectedText = (currentSelection as? GeckoSelectionActionDelegate)
++            ?.consumeSelectedText()
++            ?: currentSelection?.selection?.text?.takeIf { it.isNotBlank() }
++        if (!selectedText.isNullOrBlank()) {
++            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++            clipboard.setPrimaryClip(ClipData.newPlainText("所选内容", selectedText))
++            return true
++        }
++        dispatchControlShortcut(KeyEvent.KEYCODE_C)
++        return false
++    }
++
++    override fun preserveSelection(): Boolean =
++        (currentSelection as? GeckoSelectionActionDelegate)?.preserveSelectedText() == true
++
++    override fun pasteSelection(): Boolean {
++        val selection = currentSelection?.selection
++        if (selection != null &&
++            selection.isActionAvailable(GeckoSession.SelectionActionDelegate.ACTION_PASTE)
++        ) {
++            selection.paste()
++            return true
++        }
++        return dispatchControlShortcut(KeyEvent.KEYCODE_V)
++    }
++
++    override fun selectAllSelection(): Boolean {
++        val selection = currentSelection?.selection
++        if (selection != null &&
++            selection.isActionAvailable(GeckoSession.SelectionActionDelegate.ACTION_SELECT_ALL)
++        ) {
++            selection.selectAll()
++            return true
++        }
++        return dispatchControlShortcut(KeyEvent.KEYCODE_A)
++    }
++
++    private fun dispatchControlShortcut(keyCode: Int): Boolean {
++        val downTime = SystemClock.uptimeMillis()
++        val ctrlMeta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
++        fun keyEvent(action: Int, code: Int, metaState: Int) = KeyEvent(
++            downTime,
++            SystemClock.uptimeMillis(),
++            action,
++            code,
++            0,
++            metaState,
++            KeyCharacterMap.VIRTUAL_KEYBOARD,
++            0,
++            0,
++            InputDevice.SOURCE_KEYBOARD,
++        )
++
++        geckoView.dispatchKeyEvent(keyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, ctrlMeta))
++        geckoView.dispatchKeyEvent(keyEvent(KeyEvent.ACTION_DOWN, keyCode, ctrlMeta))
++        geckoView.dispatchKeyEvent(keyEvent(KeyEvent.ACTION_UP, keyCode, ctrlMeta))
++        geckoView.dispatchKeyEvent(keyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0))
++        return true
++    }
++
+     override fun canScrollVerticallyUp() = currentSession?.let { it.scrollY > 0 } != false
+ 
+     override fun canScrollVerticallyDown() =
+diff --git a/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/selection/GeckoSelectionActionDelegate.kt b/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/selection/GeckoSelectionActionDelegate.kt
+index 96a7c75..beafb35 100644
+--- a/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/selection/GeckoSelectionActionDelegate.kt
++++ b/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/selection/GeckoSelectionActionDelegate.kt
+@@ -22,6 +22,25 @@ open class GeckoSelectionActionDelegate(
+     internal val customDelegate: SelectionActionDelegate,
+ ) : BasicSelectionActionDelegate(activity) {
+ 
++    private var rememberedSelectedText: String? = null
++
++    private fun rememberCurrentSelection(): String? = mSelection?.text
++        ?.takeIf { it.isNotBlank() }
++        ?.also { rememberedSelectedText = it }
++
++    /**
++     * Returns the latest non-empty Gecko selection once. The target hardware converts the
++     * secondary mouse button to Android Back, which can hide Gecko's visual selection before
++     * the application receives the context-menu click.
++     */
++    fun consumeSelectedText(): String? {
++        val text = rememberCurrentSelection() ?: rememberedSelectedText
++        rememberedSelectedText = null
++        return text
++    }
++
++    fun preserveSelectedText(): Boolean = rememberCurrentSelection() != null
++
+     companion object {
+         /**
+          * @returns a [GeckoSelectionActionDelegate] if [customDelegate] is non-null and [context]
+@@ -37,11 +56,12 @@ open class GeckoSelectionActionDelegate(
+     }
+ 
+     override fun getAllActions(): Array<String> {
++        rememberCurrentSelection()
+         return customDelegate.sortedActions(super.getAllActions() + customDelegate.getAllActions())
+     }
+ 
+     override fun isActionAvailable(id: String): Boolean {
+-        val selectedText = mSelection?.text
++        val selectedText = rememberCurrentSelection()
+ 
+         val customActionIsAvailable = !selectedText.isNullOrEmpty() &&
+             customDelegate.isActionAvailable(id, selectedText)
+@@ -60,7 +80,7 @@ open class GeckoSelectionActionDelegate(
+     override fun performAction(id: String, item: MenuItem): Boolean {
+         // Temporary, removed once https://bugzilla.mozilla.org/show_bug.cgi?id=1694983 is fixed
+         try {
+-            val selectedText = mSelection?.text ?: return super.performAction(id, item)
++            val selectedText = rememberCurrentSelection() ?: return super.performAction(id, item)
+ 
+             return customDelegate.performAction(id, selectedText) || super.performAction(id, item)
+         } catch (e: SecurityException) {
+diff --git a/app/src/forkRelease/res/values/static_strings.xml b/app/src/forkRelease/res/values/static_strings.xml
+index 7bb5249..62c8daf 100644
+--- a/app/src/forkRelease/res/values/static_strings.xml
++++ b/app/src/forkRelease/res/values/static_strings.xml
+@@ -5,5 +5,7 @@
+ <resources>
+     <!-- Name of the application -->
+     <string name="app_name" translatable="false">双屏浏览器</string>
++    <string name="firefox" translatable="false">KEMI 双屏浏览器</string>
++    <string name="app_name_firefox" translatable="false">KEMI 双屏浏览器</string>
+     <string name="home_screen_shortcut_single_screen" translatable="false">单屏模式</string>
+ </resources>
+diff --git a/app/src/forkRelease/res/xml/shortcuts.xml b/app/src/forkRelease/res/xml/shortcuts.xml
+index 9eb7a3b..9bb5ee3 100644
+--- a/app/src/forkRelease/res/xml/shortcuts.xml
++++ b/app/src/forkRelease/res/xml/shortcuts.xml
+@@ -12,7 +12,7 @@
+         <intent
+             android:action="android.intent.action.MAIN"
+             android:targetPackage="io.github.forkmaintainers.iceraven"
+-            android:targetClass="org.mozilla.fenix.HomeActivity" />
++            android:targetClass="org.mozilla.fenix.dualscreen.SingleScreenBrowserActivity" />
+     </shortcut>
+     <shortcut
+         android:shortcutId="open_new_tab"
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 7bb947c..4f67e98 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -529,6 +529,16 @@
+             android:screenOrientation="landscape"
+             android:theme="@style/NormalTheme" />
+ 
++        <activity
++            android:name=".dualscreen.SingleScreenBrowserActivity"
++            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
++            android:excludeFromRecents="true"
++            android:exported="true"
++            android:launchMode="singleTask"
++            android:resizeableActivity="true"
++            android:screenOrientation="landscape"
++            android:theme="@style/NormalTheme" />
++
+         <activity
+             android:name=".HomeActivity"
+             android:theme="@style/SplashScreenThemeBase"
+diff --git a/app/src/main/java/org/mozilla/fenix/FeatureFlags.kt b/app/src/main/java/org/mozilla/fenix/FeatureFlags.kt
+index 86273ea..5936a70 100644
+--- a/app/src/main/java/org/mozilla/fenix/FeatureFlags.kt
++++ b/app/src/main/java/org/mozilla/fenix/FeatureFlags.kt
+@@ -25,7 +25,7 @@ object FeatureFlags {
+     /**
+      * Allows users to enable Firefox Suggest.
+      */
+-    const val FX_SUGGEST = true
++    const val FX_SUGGEST = false
+ 
+     /**
+      * Disables the Onboarding feature for debug builds by default. Set this to `true` if you need
+@@ -33,7 +33,7 @@ object FeatureFlags {
+      *
+      * ⚠️ DO NOT MODIFY THIS FLAG IN PRODUCTION.
+      */
+-    val onboardingFeatureEnabled = !Config.channel.isDebug
++    const val onboardingFeatureEnabled = false
+ 
+     /**
+      * Enables Firefox Labs.
+diff --git a/app/src/main/java/org/mozilla/fenix/FenixApplication.kt b/app/src/main/java/org/mozilla/fenix/FenixApplication.kt
+index 3703fd4..67405e9 100644
+--- a/app/src/main/java/org/mozilla/fenix/FenixApplication.kt
++++ b/app/src/main/java/org/mozilla/fenix/FenixApplication.kt
+@@ -294,6 +294,8 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
+         // Initialize Nimbus and its backend.
+         initializeNimbus()
+ 
++        configureKemiCleanBrowser()
++
+         ProfilerMarkerFactProcessor.create { components.core.engine.profiler }.register()
+ 
+         applicationScope.launch {
+@@ -353,6 +355,31 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
+         runBlockingIncrement { megazordDeferred.await() }
+     }
+ 
++    /**
++     * Keep the KEMI build free of upstream onboarding, account promotion, sponsored content,
++     * experiments and marketing telemetry. These values are applied on every launch so an
++     * upgraded installation cannot restore an old Firefox/Iceraven promotional preference.
++     */
++    private fun configureKemiCleanBrowser() {
++        components.settings.apply {
++            onboardingFeatureEnabled = false
++            enablePersistentOnboarding = false
++            continuousOnboardingFeatureEnabled = false
++            shouldShowSignInButton = false
++            showPocketRecommendationsFeature = false
++            showContileFeature = false
++            showSponsoredSuggestions = false
++            showNonSponsoredSuggestions = false
++            isTermsOfUsePromptEnabled = false
++            isTelemetryEnabled = false
++            isMarketingTelemetryEnabled = false
++            isDailyUsagePingEnabled = false
++            isExperimentationEnabled = false
++            isRolloutsEnabled = false
++        }
++        components.fenixOnboarding.finish()
++    }
++
+     /**
+      * The remainder of main-process initialization happens here now that we have ensured the
+      * application-services initialization is completed. This also queues a bunch of follow-up
+diff --git a/app/src/main/java/org/mozilla/fenix/HomeActivity.kt b/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
+index 34d74f1..20f5829 100644
+--- a/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
+@@ -5,6 +5,7 @@
+ package org.mozilla.fenix
+ 
+ import android.app.assist.AssistContent
++import android.content.ClipboardManager
+ import android.content.ComponentName
+ import android.content.Context
+ import android.content.Intent
+@@ -18,13 +19,18 @@ import android.os.StrictMode
+ import android.text.format.DateUtils
+ import android.util.AttributeSet
+ import android.view.ActionMode
++import android.view.InputDevice
+ import android.view.KeyEvent
+ import android.view.LayoutInflater
+ import android.view.MotionEvent
+ import android.view.View
+ import android.view.ViewConfiguration
+ import android.view.ViewGroup
++import android.view.inputmethod.EditorInfo
+ import android.view.WindowManager.LayoutParams.FLAG_SECURE
++import android.widget.FrameLayout
++import android.widget.PopupMenu
++import android.widget.Toast
+ import androidx.activity.BackEventCompat
+ import androidx.annotation.CallSuper
+ import androidx.annotation.IdRes
+@@ -372,6 +378,9 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity, Crash
+ 
+     // Tracker for contextual menu (Copy|Search|Select all|etc...)
+     private var actionMode: ActionMode? = null
++    private var lastMouseX = 0f
++    private var lastMouseY = 0f
++    private var hardwareMouseEngineView: EngineView? = null
+ 
+     private val startupPathProvider: StartupPathProvider = DefaultStartupPathProvider()
+     private lateinit var startupTypeTelemetry: StartupTypeTelemetry
+@@ -1039,6 +1048,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity, Crash
+                 callTextClicked = { call(it) },
+                 actionSorter = ::actionSorter,
+             )
++            hardwareMouseEngineView = this
+         }.asView()
+         else -> super.onCreateView(parent, name, context, attrs)
+     }
+@@ -1130,10 +1140,23 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity, Crash
+ 
+     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+         ProfilerMarkers.addForDispatchTouchEvent(components.core.engine.profiler, ev)
++        if (ev != null && ev.isFromSource(InputDevice.SOURCE_MOUSE) && ev.pointerCount > 0) {
++            lastMouseX = ev.x
++            lastMouseY = ev.y
++        }
+         return super.dispatchTouchEvent(ev)
+     }
+ 
+     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
++        // The target hardware reports the secondary mouse button as Android Back.
++        // Intercept it before browser navigation and expose desktop-style text actions.
++        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.isFromSource(InputDevice.SOURCE_MOUSE)) {
++            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
++                hardwareMouseEngineView?.preserveSelection()
++                showHardwareMouseTextMenu()
++            }
++            return true
++        }
+         // The KEYCODE_MENU event is handled here instead of onKeyDown or onKeyUp because
+         // after navigating to another fragment like Settings or Bookmarks, and then back this
+         // key event is somehow getting consumed before it reaches onKeyDown or onKeyUp.
+@@ -1162,6 +1185,91 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity, Crash
+         return super.dispatchKeyEvent(event)
+     }
+ 
++    private fun showHardwareMouseTextMenu() {
++        val root = findViewById<FrameLayout>(android.R.id.content) ?: return
++        val textTarget = currentFocus
++        val anchor = View(this).apply {
++            layoutParams = FrameLayout.LayoutParams(1, 1).apply {
++                leftMargin = lastMouseX.toInt().coerceIn(0, (root.width - 1).coerceAtLeast(0))
++                topMargin = lastMouseY.toInt().coerceIn(0, (root.height - 1).coerceAtLeast(0))
++            }
++        }
++        root.addView(anchor)
++        anchor.post {
++            if (anchor.parent == null || isFinishing) return@post
++            PopupMenu(this, anchor).apply {
++                setForceShowIcon(true)
++                menu.add(0, android.R.id.copy, 0, "复制所选内容")
++                    .setIcon(android.R.drawable.ic_menu_edit)
++                menu.add(0, android.R.id.paste, 1, "粘贴")
++                    .setIcon(android.R.drawable.ic_menu_send)
++                    .isEnabled = (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
++                    .hasPrimaryClip()
++                menu.add(0, android.R.id.selectAll, 2, "全选")
++                    .setIcon(android.R.drawable.ic_menu_set_as)
++                setOnMenuItemClickListener { item ->
++                    if (item.itemId == android.R.id.copy) {
++                        performFocusedCopy(textTarget)
++                        return@setOnMenuItemClickListener true
++                    }
++                    val success = when (item.itemId) {
++                        android.R.id.paste -> performFocusedTextAction(textTarget, item.itemId) ||
++                            hardwareMouseEngineView?.pasteSelection() == true
++                        android.R.id.selectAll -> performFocusedTextAction(textTarget, item.itemId) ||
++                            hardwareMouseEngineView?.selectAllSelection() == true
++                        else -> false
++                    }
++                    Toast.makeText(
++                        this@HomeActivity,
++                        if (success) {
++                            if (item.itemId == android.R.id.paste) "已粘贴" else "已复制"
++                        } else {
++                            if (item.itemId == android.R.id.copy) {
++                                "请先选择要复制的内容"
++                            } else {
++                                "当前页面没有可操作的文字输入位置"
++                            }
++                        },
++                        Toast.LENGTH_SHORT,
++                    ).show()
++                    true
++                }
++                setOnDismissListener { root.removeView(anchor) }
++                show()
++            }
++        }
++    }
++
++    private fun performFocusedTextAction(target: View?, actionId: Int): Boolean {
++        target ?: return false
++        val connection = target.onCreateInputConnection(EditorInfo()) ?: return false
++        return connection.performContextMenuAction(actionId)
++    }
++
++    private fun performFocusedCopy(target: View?) {
++        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++        val beforeTimestamp = clipboard.primaryClipDescription?.timestamp
++        val copiedDirectly = hardwareMouseEngineView?.copySelection() == true
++        if (!copiedDirectly) {
++            performFocusedTextAction(target, android.R.id.copy)
++        }
++        window.decorView.postDelayed(
++            {
++                val afterTimestamp = clipboard.primaryClipDescription?.timestamp
++                val copied = copiedDirectly || (
++                    clipboard.hasPrimaryClip() &&
++                        afterTimestamp != null && afterTimestamp != beforeTimestamp
++                    )
++                Toast.makeText(
++                    this,
++                    if (copied) "已复制" else "请先选择要复制的内容",
++                    Toast.LENGTH_SHORT,
++                ).show()
++            },
++            300,
++        )
++    }
++
+     final override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+         // Inspired by https://searchfox.org/mozilla-esr68/source/mobile/android/base/java/org/mozilla/gecko/BrowserApp.java#584-613
+         // Android N and Huawei devices have broken onKeyLongPress events for the back button, so we
+diff --git a/app/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt b/app/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt
+index f7d2788..e60c344 100644
+--- a/app/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt
++++ b/app/src/main/java/org/mozilla/fenix/components/menu/MenuDialogFragment.kt
+@@ -683,7 +683,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
+                                     canGoForward = selectedTab?.content?.canGoForward ?: true,
+                                     extensionsMenuItemDescription = extensionsMenuItemDescription,
+                                     scrollState = scrollState,
+-                                    showBanner = shouldShowMenuBanner && !defaultBrowser,
++                                    showBanner = false,
+                                     isDownloadHighlighted = isDownloadHighlighted,
+                                     webExtensionMenuCount = webExtensionsCount,
+                                     isAllWebExtensionsDisabled = isAllWebExtensionsDisabled,
+diff --git a/app/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt b/app/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt
+index 54049c6..770e6c4 100644
+--- a/app/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt
++++ b/app/src/main/java/org/mozilla/fenix/components/menu/compose/MainMenu.kt
+@@ -56,7 +56,6 @@ import org.mozilla.fenix.components.menu.MenuAccessPoint
+ import org.mozilla.fenix.components.menu.MenuDialogTestTag.DESKTOP_SITE_OFF
+ import org.mozilla.fenix.components.menu.MenuDialogTestTag.DESKTOP_SITE_ON
+ import org.mozilla.fenix.components.menu.MenuDialogTestTag.MORE_OPTION_CHEVRON
+-import org.mozilla.fenix.components.menu.compose.header.MozillaAccountMenuItem
+ import org.mozilla.fenix.components.menu.store.IPProtectionMenuState
+ import org.mozilla.fenix.components.menu.store.WebExtensionMenuItem
+ import org.mozilla.fenix.theme.FirefoxTheme
+@@ -322,13 +321,6 @@ fun MainMenu(
+         )
+ 
+         MenuGroup {
+-            MozillaAccountMenuItem(
+-                account = account,
+-                accountState = accountState,
+-                isPrivate = isPrivate,
+-                onClick = onMozillaAccountButtonClick,
+-            )
+-
+             if (accessPoint == MenuAccessPoint.Home) {
+                 MenuItem(
+                     label = stringResource(id = R.string.browser_menu_change_wallpaper),
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 47568ca..f06ee11 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -86,6 +86,7 @@ private class GeckoInputSurface(context: Context) : SurfaceView(context) {
+ open class DualScreenBrowserActivity : Activity() {
+     internal lateinit var browserSurface: SurfaceView
+     internal open val isTopDisplay = false
++    internal open val isSingleScreen = false
+     private var addressField: EditText? = null
+     private var loadingBar: ProgressBar? = null
+     private var finishingFromPair = false
+@@ -93,11 +94,12 @@ open class DualScreenBrowserActivity : Activity() {
+     private var lastMouseX = TARGET_WIDTH_PX / 2f
+     private var lastMouseY = TARGET_VIEWPORT_HEIGHT_PX / 2f
+     private var lastMouseEventAt = Long.MIN_VALUE
++    private var pendingMouseSelection: String? = null
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+         lockDualScreenOrientation()
+-        if (!isTopDisplay && display?.displayId != Display.DEFAULT_DISPLAY) {
++        if (!isSingleScreen && !isTopDisplay && display?.displayId != Display.DEFAULT_DISPLAY) {
+             redirectControllerToDisplay0()
+             return
+         }
+@@ -396,7 +398,9 @@ open class DualScreenBrowserActivity : Activity() {
+     ) {
+         runOnUiThread {
+             if (!::rootLayout.isInitialized || isFinishing) return@runOnUiThread
+-            val anchor = View(this).apply {
++            captureSelectionBeforeMouseMenu {
++                if (!::rootLayout.isInitialized || isFinishing) return@captureSelectionBeforeMouseMenu
++                val anchor = View(this).apply {
+                 layoutParams = FrameLayout.LayoutParams(dp(1), dp(1)).apply {
+                     leftMargin = x.toInt().coerceIn(0, (rootLayout.width - dp(1)).coerceAtLeast(0))
+                     topMargin = y.toInt().coerceIn(0, (rootLayout.height - dp(1)).coerceAtLeast(0))
+@@ -421,7 +425,6 @@ open class DualScreenBrowserActivity : Activity() {
+                         addItem(4, 3, "打开图片或媒体", android.R.drawable.ic_menu_gallery)
+                         addItem(5, 4, "复制图片或媒体地址", android.R.drawable.ic_menu_save)
+                     }
+-                    val selectedText = DualScreenCoordinator.selectedText()
+                     addItem(6, 6, "复制所选内容", android.R.drawable.ic_menu_edit)
+                     val clipboard =
+                         getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+@@ -445,7 +448,7 @@ open class DualScreenBrowserActivity : Activity() {
+                             3 -> copyText("链接文字", linkText.orEmpty())
+                             4 -> DualScreenCoordinator.navigate(mediaUri.orEmpty())
+                             5 -> copyText("媒体地址", mediaUri.orEmpty())
+-                            6 -> copySelectedText(selectedText ?: linkText)
++                            6 -> copySelectedText(linkText)
+                             7 -> performTextAction(android.R.id.paste, "已粘贴")
+                             10 -> DualScreenCoordinator.goBack()
+                             11 -> DualScreenCoordinator.goForward()
+@@ -460,7 +463,46 @@ open class DualScreenBrowserActivity : Activity() {
+                     show()
+                 }
+             }
++            }
++        }
++    }
++
++    /**
++     * The target launcher converts the mouse secondary button into Android Back. Showing an
++     * Android popup can then clear Gecko's DOM selection before the Copy item is clicked. Copy
++     * once while Gecko still owns focus and cache the resulting system-clipboard text for the
++     * menu action. No selection leaves the clipboard timestamp unchanged and therefore does not
++     * make stale clipboard text look like a new selection.
++     */
++    private fun captureSelectionBeforeMouseMenu(showMenu: () -> Unit) {
++        DualScreenCoordinator.selectedText()?.takeIf { it.isNotBlank() }?.let {
++            pendingMouseSelection = it
++            showMenu()
++            return
++        }
++
++        pendingMouseSelection = null
++        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++        val beforeTimestamp = clipboard.primaryClipDescription?.timestamp
++        if (!DualScreenCoordinator.dispatchCopyShortcut(browserSurface)) {
++            showMenu()
++            return
+         }
++        browserSurface.postDelayed(
++            {
++                val afterTimestamp = clipboard.primaryClipDescription?.timestamp
++                if (afterTimestamp != null && afterTimestamp != beforeTimestamp) {
++                    pendingMouseSelection = clipboard.primaryClip
++                        ?.takeIf { clipboard.hasPrimaryClip() && it.itemCount > 0 }
++                        ?.getItemAt(0)
++                        ?.coerceToText(this)
++                        ?.toString()
++                        ?.takeIf { it.isNotBlank() }
++                }
++                showMenu()
++            },
++            160,
++        )
+     }
+ 
+     private fun rememberMousePosition(event: MotionEvent) {
+@@ -480,13 +522,38 @@ open class DualScreenBrowserActivity : Activity() {
+         Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
+     }
+ 
+-    private fun copySelectedText(value: String?) {
+-        if (value.isNullOrBlank()) {
+-            Toast.makeText(this, "请先选择要复制的内容", Toast.LENGTH_SHORT).show()
++    private fun copySelectedText(linkTextFallback: String?) {
++        // The target hardware converts secondary mouse clicks to Android Back. Persist the
++        // last non-empty Gecko selection and write it directly to Android's system clipboard so
++        // IMEs and every other application see the copied text immediately.
++        val rememberedSelection = DualScreenCoordinator.selectedText()
++        val directText = rememberedSelection?.takeIf { it.isNotBlank() }
++            ?: pendingMouseSelection?.takeIf { it.isNotBlank() }
++            ?: linkTextFallback?.takeIf { it.isNotBlank() }
++        if (directText != null) {
++            copyText("所选内容", directText)
++            DualScreenCoordinator.clearSelectedText()
++            pendingMouseSelection = null
+             return
+         }
+-        copyText("所选内容", value)
+-        DualScreenCoordinator.clearSelectedText()
++
++        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++        val beforeTimestamp = clipboard.primaryClipDescription?.timestamp
++        DualScreenCoordinator.dispatchCopyShortcut(browserSurface)
++        browserSurface.postDelayed(
++            {
++                val afterTimestamp = clipboard.primaryClipDescription?.timestamp
++                val copied = clipboard.hasPrimaryClip() &&
++                    afterTimestamp != null && afterTimestamp != beforeTimestamp
++                Toast.makeText(
++                    this,
++                    if (copied) "已复制" else "请先选择要复制的内容",
++                    Toast.LENGTH_SHORT,
++                ).show()
++                if (copied) DualScreenCoordinator.clearSelectedText()
++            },
++            500,
++        )
+     }
+ 
+     private fun performTextAction(actionId: Int, successMessage: String) {
+@@ -584,6 +651,11 @@ class DualScreenTopActivity : DualScreenBrowserActivity() {
+     override val isTopDisplay = true
+ }
+ 
++class SingleScreenBrowserActivity : DualScreenBrowserActivity() {
++    override val isTopDisplay = true
++    override val isSingleScreen = true
++}
++
+ private object DualScreenCoordinator {
+     private val mainHandler = Handler(Looper.getMainLooper())
+     private var controller = WeakReference<DualScreenBrowserActivity>(null)
+@@ -596,6 +668,7 @@ private object DualScreenCoordinator {
+     private var currentUrl = DualScreenBrowserActivity.DEFAULT_URL
+     private var selectedText: String? = null
+     private var exiting = false
++    private var singleScreenSession = false
+ 
+     @Synchronized
+     fun currentUrl(): String = currentUrl
+@@ -611,14 +684,24 @@ private object DualScreenCoordinator {
+     @Synchronized
+     fun attach(activity: DualScreenBrowserActivity, initialUrl: String) {
+         exiting = false
+-        if (activity.isTopDisplay) {
++        if (session != null && singleScreenSession != activity.isSingleScreen) {
++            controller.get()?.takeIf { it !== activity }?.finishFromPair()
++            topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
++            shutdownSession()
++        }
++        if (activity.isSingleScreen) {
++            controller.clear()
++            topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
++            topDisplay = WeakReference(activity)
++            ensureSession(activity, initialUrl, singleScreen = true)
++        } else if (activity.isTopDisplay) {
+             topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
+             topDisplay = WeakReference(activity)
+             activity.locationChanged(currentUrl)
+         } else {
+             controller.get()?.takeIf { it !== activity }?.finishFromPair()
+             controller = WeakReference(activity)
+-            ensureSession(activity, initialUrl)
++            ensureSession(activity, initialUrl, singleScreen = false)
+         }
+     }
+ 
+@@ -693,6 +776,32 @@ private object DualScreenCoordinator {
+         return connection.performContextMenuAction(actionId)
+     }
+ 
++    @Synchronized
++    fun dispatchCopyShortcut(view: View): Boolean {
++        val input = session?.textInput ?: return false
++        if (input.view !== view) input.setView(view)
++        view.requestFocus()
++        val downTime = SystemClock.uptimeMillis()
++        val meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
++        fun event(action: Int, keyCode: Int, metaState: Int) = KeyEvent(
++            downTime,
++            SystemClock.uptimeMillis(),
++            action,
++            keyCode,
++            0,
++            metaState,
++            KeyEvent.KEYCODE_UNKNOWN,
++            0,
++            0,
++            InputDevice.SOURCE_KEYBOARD,
++        )
++        input.onKeyDown(KeyEvent.KEYCODE_CTRL_LEFT, event(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, meta))
++        input.onKeyDown(KeyEvent.KEYCODE_C, event(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_C, meta))
++        input.onKeyUp(KeyEvent.KEYCODE_C, event(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_C, meta))
++        input.onKeyUp(KeyEvent.KEYCODE_CTRL_LEFT, event(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0))
++        return true
++    }
++
+     @Synchronized
+     fun commitText(view: View, text: String): Boolean {
+         val input = session?.textInput ?: return false
+@@ -760,8 +869,13 @@ private object DualScreenCoordinator {
+         controller.get()?.runOnUiThread { controller.get()?.finishFromPair() }
+     }
+ 
+-    private fun ensureSession(activity: DualScreenBrowserActivity, initialUrl: String) {
++    private fun ensureSession(
++        activity: DualScreenBrowserActivity,
++        initialUrl: String,
++        singleScreen: Boolean,
++    ) {
+         if (session != null) return
++        singleScreenSession = singleScreen
+         currentUrl = initialUrl
+         val createdSession = GeckoSession().apply {
+             setProgressDelegate(object : GeckoSession.ProgressDelegate {
+@@ -846,7 +960,7 @@ private object DualScreenCoordinator {
+             setFocused(true)
+         }
+         session = createdSession
+-        val sharedCompositor = DualScreenSharedCompositor()
++        val sharedCompositor = DualScreenSharedCompositor(singleScreen)
+         compositor = sharedCompositor
+         sharedCompositor.start { inputSurface ->
+             mainHandler.post {
+@@ -857,7 +971,7 @@ private object DualScreenCoordinator {
+                     GeckoDisplay.SurfaceInfo.Builder(inputSurface)
+                         .size(
+                             DualScreenBrowserActivity.TARGET_WIDTH_PX,
+-                            DualScreenBrowserActivity.TARGET_CANVAS_HEIGHT_PX,
++                            sharedCompositor.canvasHeight,
+                         )
+                         .build(),
+                 )
+@@ -882,6 +996,7 @@ private object DualScreenCoordinator {
+         geckoDisplay = null
+         activeSession?.close()
+         session = null
++        singleScreenSession = false
+         selectedText = null
+         compositor?.stop()
+         compositor = null
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+index db82b29..c14a692 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+@@ -22,7 +22,9 @@ import java.nio.FloatBuffer
+  * physical displays. Both EGL window surfaces are drawn from the same texture
+  * before the next Gecko frame is acquired, so the seam cannot drift by a frame.
+  */
+-internal class DualScreenSharedCompositor {
++internal class DualScreenSharedCompositor(
++    private val singleScreen: Boolean = false,
++) {
+     enum class Slot { TOP, BOTTOM }
+ 
+     private data class Output(
+@@ -61,6 +63,9 @@ internal class DualScreenSharedCompositor {
+     private val bottomCoordinates = floatBuffer(
+         floatArrayOf(0f, 0f, 1f, 0f, 0f, 0.5f, 1f, 0.5f),
+     )
++    private val fullCoordinates = floatBuffer(
++        floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f),
++    )
+ 
+     fun start(onInputReady: (Surface) -> Unit) {
+         handler.post {
+@@ -205,7 +210,7 @@ internal class DualScreenSharedCompositor {
+             GLES20.GL_CLAMP_TO_EDGE,
+         )
+         inputTexture = SurfaceTexture(inputTextureId).apply {
+-            setDefaultBufferSize(CANVAS_WIDTH, CANVAS_HEIGHT)
++            setDefaultBufferSize(CANVAS_WIDTH, canvasHeight)
+             setOnFrameAvailableListener({ drawFrame(updateTexture = true) }, handler)
+         }
+         inputSurface = Surface(inputTexture)
+@@ -218,14 +223,14 @@ internal class DualScreenSharedCompositor {
+             try {
+                 inputTexture?.updateTexImage()
+                 inputTexture?.getTransformMatrix(textureMatrix)
+-                if (!hasFrame) Log.i(TAG, "Received first 1920x2560 Gecko frame")
++                if (!hasFrame) Log.i(TAG, "Received first ${CANVAS_WIDTH}x$canvasHeight Gecko frame")
+                 hasFrame = true
+             } catch (error: RuntimeException) {
+                 Log.w(TAG, "Dropping invalid Gecko frame", error)
+                 return
+             }
+         }
+-        drawOutput(topOutput, topCoordinates)
++        drawOutput(topOutput, if (singleScreen) fullCoordinates else topCoordinates)
+         drawOutput(bottomOutput, bottomCoordinates)
+     }
+ 
+@@ -309,10 +314,13 @@ internal class DualScreenSharedCompositor {
+             .asFloatBuffer()
+             .apply { put(values); position(0) }
+ 
++    val canvasHeight: Int
++        get() = if (singleScreen) OUTPUT_HEIGHT else DUAL_CANVAS_HEIGHT
++
+     companion object {
+         private const val TAG = "KBrowserCompositor"
+         private const val CANVAS_WIDTH = 1920
+-        private const val CANVAS_HEIGHT = 2560
++        private const val DUAL_CANVAS_HEIGHT = 2560
+         private const val OUTPUT_WIDTH = 1920
+         private const val OUTPUT_HEIGHT = 1280
+ 
+diff --git a/app/src/main/java/org/mozilla/fenix/settings/CustomizationFragment.kt b/app/src/main/java/org/mozilla/fenix/settings/CustomizationFragment.kt
+index ad6ef63..fd2fa2c 100644
+--- a/app/src/main/java/org/mozilla/fenix/settings/CustomizationFragment.kt
++++ b/app/src/main/java/org/mozilla/fenix/settings/CustomizationFragment.kt
+@@ -397,8 +397,9 @@ class CustomizationFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFrag
+ 
+ 
+         requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_sign_in_button).apply {
+-            isChecked = context.components.settings.shouldShowSignInButton
+-            onPreferenceChangeListener = SharedPreferenceUpdater()
++            isChecked = false
++            isVisible = false
++            context.components.settings.shouldShowSignInButton = false
+         }
+     }
+ 
+diff --git a/app/src/main/java/org/mozilla/fenix/settings/account/AccountUiView.kt b/app/src/main/java/org/mozilla/fenix/settings/account/AccountUiView.kt
+index a5239ae..7c4f3a0 100644
+--- a/app/src/main/java/org/mozilla/fenix/settings/account/AccountUiView.kt
++++ b/app/src/main/java/org/mozilla/fenix/settings/account/AccountUiView.kt
+@@ -46,6 +46,14 @@ class AccountUiView(
+      * Possible conditions are logged-in without problems, logged-out, and logged-in but needs to re-authenticate.
+      */
+     fun updateAccountUIState(context: Context, profile: Profile?) {
++        if (!context.components.settings.shouldShowSignInButton) {
++            preferenceSignIn.isVisible = false
++            preferenceFirefoxAccount.isVisible = false
++            preferenceFirefoxAccountAuthError.isVisible = false
++            accountPreferenceCategory.isVisible = false
++            return
++        }
++
+         val account = accountManager.authenticatedAccount()
+ 
+         // Signed-in, no problems.
+diff --git a/app/src/main/java/org/mozilla/fenix/utils/Settings.kt b/app/src/main/java/org/mozilla/fenix/utils/Settings.kt
+index eaec5fe..c7cda31 100644
+--- a/app/src/main/java/org/mozilla/fenix/utils/Settings.kt
++++ b/app/src/main/java/org/mozilla/fenix/utils/Settings.kt
+@@ -1549,7 +1549,7 @@ class Settings(
+ 
+     var shouldShowSignInButton by booleanPreference(
+         appContext.getPreferenceKey(R.string.pref_key_show_sign_in_button),
+-        default = true,
++        default = false,
+     )
+ 
+     var shouldUseDefaultHomepage by booleanPreference(
+@@ -2298,7 +2298,7 @@ class Settings(
+      */
+     var continuousOnboardingFeatureEnabled by booleanPreference(
+         key = appContext.getPreferenceKey(R.string.pref_key_continuous_onboarding_enabled),
+-        default = { FxNimbus.features.continuousOnboarding.value().enabled },
++        default = false,
+     )
+ 
+     /**
