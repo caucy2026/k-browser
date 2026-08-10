@@ -1,0 +1,40 @@
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -295,11 +295,11 @@
+     }
+ 
+     override fun onDestroy() {
+-        val closePair = !isTopDisplay && isFinishing && !isChangingConfigurations &&
+-            !finishingFromPair
++        val closePair = isFinishing && !isChangingConfigurations && !finishingFromPair
++        val destroyedTopDisplay = isTopDisplay
+         DualScreenCoordinator.detach(this)
+         super.onDestroy()
+-        if (closePair) DualScreenCoordinator.controllerDestroyed()
++        if (closePair) DualScreenCoordinator.memberDestroyed(destroyedTopDisplay)
+     }
+ 
+     @Deprecated("Deprecated in Android")
+@@ -309,7 +309,7 @@
+ 
+     override fun onUserLeaveHint() {
+         super.onUserLeaveHint()
+-        if (!isTopDisplay) DualScreenCoordinator.exitAll()
++        DualScreenCoordinator.exitAll()
+     }
+ 
+     internal fun finishFromPair() {
+@@ -474,9 +474,10 @@
+     }
+ 
+     @Synchronized
+-    fun controllerDestroyed() {
++    fun memberDestroyed(destroyedTopDisplay: Boolean) {
+         if (!exiting) {
+-            topDisplay.get()?.runOnUiThread { topDisplay.get()?.finishFromPair() }
++            val peer = if (destroyedTopDisplay) controller.get() else topDisplay.get()
++            peer?.runOnUiThread { peer.finishFromPair() }
+         }
+         shutdownSession()
+     }
+
