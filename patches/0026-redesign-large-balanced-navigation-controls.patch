@@ -1,0 +1,136 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index f06ee11..c624bd1 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -10,6 +10,7 @@ import android.content.pm.ActivityInfo
+ import android.graphics.Color
+ import android.graphics.drawable.ColorDrawable
+ import android.graphics.drawable.GradientDrawable
++import android.graphics.drawable.StateListDrawable
+ import android.hardware.display.DisplayManager
+ import android.os.Build
+ import android.os.Bundle
+@@ -209,25 +210,25 @@ open class DualScreenBrowserActivity : Activity() {
+             elevation = 0f
+             layoutParams = FrameLayout.LayoutParams(
+                 FrameLayout.LayoutParams.MATCH_PARENT,
+-                dp(72),
++                dp(80),
+                 Gravity.TOP,
+             )
+         }
+         val toolbar = LinearLayout(this).apply {
+             orientation = LinearLayout.HORIZONTAL
+             gravity = Gravity.CENTER_VERTICAL
+-            setPadding(dp(10), dp(5), dp(10), dp(5))
++            setPadding(dp(12), dp(10), dp(12), dp(10))
+             layoutParams = FrameLayout.LayoutParams(
+                 FrameLayout.LayoutParams.MATCH_PARENT,
+-                dp(70),
++                dp(78),
+                 Gravity.TOP,
+             )
+         }
+ 
+-        toolbar.addView(navButton("‹", "后退") { DualScreenCoordinator.goBack() })
+-        toolbar.addView(navButton("›", "前进") { DualScreenCoordinator.goForward() })
+-        toolbar.addView(navButton("↻", "刷新") { DualScreenCoordinator.reload() })
+-        toolbar.addView(navButton("⌂", "主页") { DualScreenCoordinator.navigate(HOME_URL) })
++        toolbar.addView(navButton("← 后退", "后退") { DualScreenCoordinator.goBack() })
++        toolbar.addView(navButton("前进 →", "前进") { DualScreenCoordinator.goForward() })
++        toolbar.addView(navButton("↻ 刷新", "刷新") { DualScreenCoordinator.reload() })
++        toolbar.addView(navButton("⌂ 主页", "主页") { DualScreenCoordinator.navigate(HOME_URL) })
+ 
+         val address = EditText(this).apply {
+             hint = "搜索或输入网址"
+@@ -244,8 +245,8 @@ open class DualScreenBrowserActivity : Activity() {
+                 setStroke(dp(1), Color.rgb(205, 212, 224))
+             }
+             layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f).apply {
+-                marginStart = dp(8)
+-                marginEnd = dp(8)
++                marginStart = dp(6)
++                marginEnd = dp(6)
+             }
+             setOnEditorActionListener { _, actionId, _ ->
+                 if (actionId == EditorInfo.IME_ACTION_GO) {
+@@ -258,10 +259,10 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         addressField = address
+         toolbar.addView(address)
+-        toolbar.addView(navButton("前往", "打开网址", dp(64), true) {
++        toolbar.addView(navButton("前往", "打开网址", dp(72), true) {
+             submitAddress(address)
+         })
+-        toolbar.addView(navButton("退出", "退出双屏浏览器", dp(64), true) {
++        toolbar.addView(navButton("退出", "退出双屏浏览器", dp(72), true) {
+             DualScreenCoordinator.exitAll()
+         })
+ 
+@@ -285,28 +286,57 @@ open class DualScreenBrowserActivity : Activity() {
+     private fun navButton(
+         label: String,
+         description: String,
+-        width: Int = dp(64),
++        width: Int = dp(92),
+         emphasized: Boolean = false,
+         action: () -> Unit,
+     ): TextView = TextView(this).apply {
+             text = label
+-            textSize = if (emphasized) 16f else 28f
++            textSize = if (emphasized) 15f else 16f
+             gravity = Gravity.CENTER
+             contentDescription = description
+             setTextColor(if (emphasized) Color.WHITE else Color.rgb(45, 58, 78))
+-            background = GradientDrawable().apply {
+-                setColor(if (emphasized) Color.rgb(28, 94, 207) else Color.TRANSPARENT)
+-                cornerRadius = dp(12).toFloat()
+-            }
++            background = navButtonBackground(emphasized)
++            isClickable = true
++            isFocusable = true
+             setOnClickListener { action() }
+             layoutParams = LinearLayout.LayoutParams(
+                 width,
+-                if (emphasized) dp(48) else dp(58),
++                dp(56),
+             ).apply {
+-                if (emphasized) marginStart = dp(4)
++                marginStart = dp(3)
++                marginEnd = dp(3)
+             }
+         }
+ 
++    private fun navButtonBackground(emphasized: Boolean): StateListDrawable {
++        fun shape(color: Int, stroke: Int): GradientDrawable = GradientDrawable().apply {
++            setColor(color)
++            cornerRadius = dp(10).toFloat()
++            setStroke(dp(1), stroke)
++        }
++        return StateListDrawable().apply {
++            if (emphasized) {
++                addState(
++                    intArrayOf(android.R.attr.state_pressed),
++                    shape(Color.rgb(20, 73, 158), Color.rgb(20, 73, 158)),
++                )
++                addState(
++                    intArrayOf(),
++                    shape(Color.rgb(28, 94, 207), Color.rgb(28, 94, 207)),
++                )
++            } else {
++                addState(
++                    intArrayOf(android.R.attr.state_pressed),
++                    shape(Color.rgb(218, 230, 247), Color.rgb(165, 187, 220)),
++                )
++                addState(
++                    intArrayOf(),
++                    shape(Color.rgb(242, 246, 252), Color.rgb(205, 215, 230)),
++                )
++            }
++        }
++    }
++
+     private fun submitAddress(address: EditText) {
+         DualScreenCoordinator.navigate(normalizeInput(address.text.toString()))
+         address.clearFocus()
+
