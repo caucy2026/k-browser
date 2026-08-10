@@ -9,8 +9,11 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 
 - 已确认目标设备为 Android 12 / arm64。
 - Display 0 与 Display 2 均为 `1920 x 1280 @ 60Hz`。
-- 已建立可重复执行的真机预检闭环。
-- 已固定 Iceraven/Fenix 上游提交，使用免费 GitHub 托管 runner 构建。
+- 双屏模式只使用一个 GeckoSession 和一张 `1920 x 2560` Gecko 合成帧：Display 2
+  显示顶部，Display 0 显示紧接其后的底部，不是两个网页互相复制。
+- 任意屏返回、退出或离开都会同步结束另一屏；默认双屏，长按图标可进入单屏模式。
+- 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
+- 当前补丁序列为 0001–0015，最新本地候选版本为 `1.2.0-rc5`。
 
 ## 从 GitHub 完整本地编译
 
@@ -30,7 +33,7 @@ KBROWSER_VERSION_NAME=1.2.0-local ./scripts/build-local.sh
 1. 初始化所有递归子模块。
 2. 校验 Iceraven 固定提交，防止在错误上游版本打补丁。
 3. 执行 Iceraven 自身的 Android Components 准备步骤。
-4. 按 `patches/series` 顺序应用 KBrowser 0001–0011 补丁。
+4. 按 `patches/series` 顺序应用 KBrowser 0001–0015 补丁。
 
 如果系统 Python 尚未安装 PyYAML，脚本会在被忽略的 `.tools/prepare-venv` 中创建独立
 虚拟环境并安装固定版本，不修改系统 Python。
@@ -53,9 +56,19 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 构建会自动为未签名 APK 生成本机测试证书；正式发布必须改用离线保存的正式证书。
 已准备过的源码再次执行 `prepare-source.sh` 会安全跳过，不会重复打补丁。
 
-2026-08-10 已按上述步骤从 GitHub 新目录完成实测：递归子模块、隔离 Python 环境、
-0001–0011 补丁、4215 个 Gradle 任务、R8、资源优化、APK 打包以及 v2/v3 签名校验
-全部通过。首次无增量构建耗时约 9 分钟，实际时间取决于网络与机器性能。
+2026-08-10 已验证 0001–0015 能在固定的干净上游提交上按序完整重放；随后本地完成
+4215 个 Gradle 任务、R8、资源优化、APK 打包以及 v2/v3 签名校验。首次无增量构建
+约需 9 分钟，增量构建通常更快，实际时间取决于网络与机器性能。
+
+## 仓库结构与备份边界
+
+- `browser/`：固定版本的 Iceraven 上游子模块；开发机可保持补丁展开状态，不提交脏子模块指针。
+- `patches/series`：KBrowser 改动的唯一顺序入口，其他机器从这里恢复完整定制源码。
+- `scripts/prepare-source.sh`：初始化递归子模块并应用全部补丁。
+- `scripts/build-local.sh`：本机 arm64 构建、签名、校验和 `bin/` 产物输出。
+- `docs/`：硬件约束、开发流程、改动记录和真机结论。
+- `bin/`、`test-results/`、`keystore/`、`.tools/`：本地构建产物、测试证据、私钥和工具，
+  均被 Git 忽略；特别是正式签名私钥必须单独离线备份，不能上传 GitHub。
 
 ## 真机快速验证
 
