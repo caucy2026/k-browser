@@ -1,0 +1,167 @@
+diff --git a/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/GeckoEngineView.kt b/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/GeckoEngineView.kt
+--- a/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/GeckoEngineView.kt
++++ b/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/GeckoEngineView.kt
+@@ -5,4 +5,6 @@
+ package mozilla.components.browser.engine.gecko
+ 
++import android.content.ClipData
++import android.content.ClipboardManager
+ import android.content.Context
+ import android.content.res.Configuration
+@@ -198,13 +200,15 @@ class GeckoEngineView @JvmOverloads constructor(
+     override fun canClearSelection() = !currentSelection?.selection?.text.isNullOrEmpty()
+ 
+     override fun copySelection(): Boolean {
+-        val selection = currentSelection?.selection
+-        if (selection != null && selection.text.isNotEmpty() &&
+-            selection.isActionAvailable(GeckoSession.SelectionActionDelegate.ACTION_COPY)
+-        ) {
+-            selection.copy()
++        val selectedText = (currentSelection as? GeckoSelectionActionDelegate)
++            ?.consumeSelectedText()
++            ?: currentSelection?.selection?.text?.takeIf { it.isNotBlank() }
++        if (!selectedText.isNullOrBlank()) {
++            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++            clipboard.setPrimaryClip(ClipData.newPlainText("所选内容", selectedText))
+             return true
+         }
+-        return dispatchControlShortcut(KeyEvent.KEYCODE_C)
++        dispatchControlShortcut(KeyEvent.KEYCODE_C)
++        return false
+     }
+ 
+diff --git a/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/selection/GeckoSelectionActionDelegate.kt b/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/selection/GeckoSelectionActionDelegate.kt
+--- a/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/selection/GeckoSelectionActionDelegate.kt
++++ b/android-components/components/browser/engine-gecko/src/main/java/mozilla/components/browser/engine/gecko/selection/GeckoSelectionActionDelegate.kt
+@@ -22,4 +22,21 @@ open class GeckoSelectionActionDelegate(
+     internal val customDelegate: SelectionActionDelegate,
+ ) : BasicSelectionActionDelegate(activity) {
+ 
++    private var rememberedSelectedText: String? = null
++
++    private fun rememberCurrentSelection(): String? = mSelection?.text
++        ?.takeIf { it.isNotBlank() }
++        ?.also { rememberedSelectedText = it }
++
++    /**
++     * Returns the latest non-empty Gecko selection once. The target hardware converts the
++     * secondary mouse button to Android Back, which can hide Gecko's visual selection before
++     * the application receives the context-menu click.
++     */
++    fun consumeSelectedText(): String? {
++        val text = rememberCurrentSelection() ?: rememberedSelectedText
++        rememberedSelectedText = null
++        return text
++    }
++
+     companion object {
+@@ -37,10 +54,11 @@ open class GeckoSelectionActionDelegate(
+     }
+ 
+     override fun getAllActions(): Array<String> {
++        rememberCurrentSelection()
+         return customDelegate.sortedActions(super.getAllActions() + customDelegate.getAllActions())
+     }
+ 
+     override fun isActionAvailable(id: String): Boolean {
+-        val selectedText = mSelection?.text
++        val selectedText = rememberCurrentSelection()
+ 
+         val customActionIsAvailable = !selectedText.isNullOrEmpty() &&
+@@ -60,5 +78,5 @@ open class GeckoSelectionActionDelegate(
+         // Temporary, removed once https://bugzilla.mozilla.org/show_bug.cgi?id=1694983 is fixed
+         try {
+-            val selectedText = mSelection?.text ?: return super.performAction(id, item)
++            val selectedText = rememberCurrentSelection() ?: return super.performAction(id, item)
+ 
+             return customDelegate.performAction(id, selectedText) || super.performAction(id, item)
+diff --git a/app/src/main/java/org/mozilla/fenix/HomeActivity.kt b/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/HomeActivity.kt
+@@ -1248,10 +1248,14 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity, Crash
+         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+         val beforeTimestamp = clipboard.primaryClipDescription?.timestamp
+-        hardwareMouseEngineView?.copySelection() == true ||
+-            performFocusedTextAction(target, android.R.id.copy)
++        val copiedDirectly = hardwareMouseEngineView?.copySelection() == true
++        if (!copiedDirectly) {
++            performFocusedTextAction(target, android.R.id.copy)
++        }
+         window.decorView.postDelayed(
+             {
+                 val afterTimestamp = clipboard.primaryClipDescription?.timestamp
+-                val copied = clipboard.hasPrimaryClip() &&
+-                    afterTimestamp != null && afterTimestamp != beforeTimestamp
++                val copied = copiedDirectly || (
++                    clipboard.hasPrimaryClip() &&
++                        afterTimestamp != null && afterTimestamp != beforeTimestamp
++                    )
+                 Toast.makeText(
+@@ -1265,5 +1269,5 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity, Crash
+                 ).show()
+             },
+-            150,
++            300,
+         )
+     }
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -481,30 +481,36 @@ class DualScreenBrowserActivity : AppCompatActivity() {
+     }
+ 
+     private fun copySelectedText(linkTextFallback: String?) {
+-        // Desktop-style mouse selection does not invoke SelectionActionDelegate.
+-        // Ask Gecko's InputConnection to execute the browser's native copy action
+-        // so the current DOM selection is copied even when no editor is focused.
++        // The target hardware converts secondary mouse clicks to Android Back. Persist the
++        // last non-empty Gecko selection and write it directly to Android's system clipboard so
++        // IMEs and every other application see the copied text immediately.
++        val rememberedSelection = DualScreenCoordinator.selectedText()
++        val directText = rememberedSelection?.takeIf { it.isNotBlank() }
++            ?: linkTextFallback?.takeIf { it.isNotBlank() }
++        if (directText != null) {
++            copyText("所选内容", directText)
++            DualScreenCoordinator.clearSelectedText()
++            return
++        }
++
+         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+         val beforeTimestamp = clipboard.primaryClipDescription?.timestamp
+-        val reportedSuccess = DualScreenCoordinator.performTextContextAction(
++        DualScreenCoordinator.performTextContextAction(
+             browserSurface,
+             android.R.id.copy,
+         )
+-        val afterTimestamp = clipboard.primaryClipDescription?.timestamp
+-        val copiedByGecko = reportedSuccess ||
+-            (clipboard.hasPrimaryClip() && afterTimestamp != null && afterTimestamp != beforeTimestamp)
+-        if (copiedByGecko) {
+-            Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
+-            DualScreenCoordinator.clearSelectedText()
+-            return
+-        }
+-        val rememberedSelection = DualScreenCoordinator.selectedText()
+-        val fallback = rememberedSelection?.takeIf { it.isNotBlank() }
+-            ?: linkTextFallback?.takeIf { it.isNotBlank() }
+-        if (fallback != null) {
+-            copyText("所选内容", fallback)
+-            DualScreenCoordinator.clearSelectedText()
+-        } else {
+-            Toast.makeText(this, "请先选择要复制的内容", Toast.LENGTH_SHORT).show()
+-        }
++        browserSurface.postDelayed(
++            {
++                val afterTimestamp = clipboard.primaryClipDescription?.timestamp
++                val copied = clipboard.hasPrimaryClip() &&
++                    afterTimestamp != null && afterTimestamp != beforeTimestamp
++                Toast.makeText(
++                    this,
++                    if (copied) "已复制" else "请先选择要复制的内容",
++                    Toast.LENGTH_SHORT,
++                ).show()
++                if (copied) DualScreenCoordinator.clearSelectedText()
++            },
++            300,
++        )
+     }
