@@ -149,6 +149,18 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 - 本地完整构建通过（4215 个任务），APK v2/v3 签名校验通过；APK SHA-256：
   `8f0142cbf26953fec7b3e7755bd22d7b6bc9b597ca84431af35cfc8bf3ba991e`。
 
+### 1.2.0-rc7 鼠标右键通用菜单（2026-08-10）
+
+- 鼠标右键不再调用双屏退出；标准 Gecko context element 可提供链接、链接文字和媒体地址。
+- 通用菜单包含打开/复制链接、复制链接文字、打开/复制媒体、后退、前进、刷新、主页和复制网址。
+- 增加鼠标 hover、滚轮等 generic motion 到同一 `1920×2560` Gecko 坐标空间的转发。
+- 针对车机输入栈把鼠标右键降级为普通 Android Back 的情况：最近 3 秒存在鼠标活动时，
+  Back 显示右键菜单；超过判定窗口的系统/键盘返回仍执行 D0/D2 联动退出。
+- 62 真机通过模拟“Display 2 鼠标移动 + keyboard Back”复现降级路径：菜单正常出现，
+  两个浏览器 Activity 均保持；菜单关闭后普通返回使两屏回到原前台应用/启动器。
+- 本地构建 4215 个任务通过，APK v2/v3 签名通过，未发现 `FATAL EXCEPTION`；APK SHA-256：
+  `2dc6605652afb2cc511eb59ac7e471b8ead894d1ce4968e51668a0aa5dfb6afa`。
+
 ## 6. `kemi-rd` 文档对当前实现的帮助
 
 - `chip.md` 明确设备逻辑显示为 D0/D2、分辨率均为 `1920×1280`，且 Display ID
@@ -190,8 +202,8 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 
 - 源码以 `main` 最新提交为准，补丁序列可在固定上游提交上完整重放。
 - 候选 APK：`bin/KBrowser-arm64.apk`，SHA-256：
-  `8f0142cbf26953fec7b3e7755bd22d7b6bc9b597ca84431af35cfc8bf3ba991e`。
+  `2dc6605652afb2cc511eb59ac7e471b8ead894d1ce4968e51668a0aa5dfb6afa`。
 - `browser` 子模块工作树保持补丁展开状态；唯一可复现来源是固定上游提交和
-  `patches/series` 的 0001–0016 顺序，不直接提交展开后的子模块指针。
+  `patches/series` 的 0001–0017 顺序，不直接提交展开后的子模块指针。
 - 完整 Git bundle 存放在忽略目录 `artifacts/git-backups/`，生成后必须执行
   `git bundle verify`。

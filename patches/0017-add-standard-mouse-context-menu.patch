@@ -1,0 +1,243 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 3009604..95c63e3 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -2,6 +2,8 @@ package org.mozilla.fenix.dualscreen
+ 
+ import android.app.Activity
+ import android.app.ActivityOptions
++import android.content.ClipData
++import android.content.ClipboardManager
+ import android.content.Context
+ import android.content.Intent
+ import android.graphics.Color
+@@ -12,8 +14,10 @@ import android.os.Build
+ import android.os.Bundle
+ import android.os.Handler
+ import android.os.Looper
++import android.os.SystemClock
+ import android.view.Display
+ import android.view.Gravity
++import android.view.InputDevice
+ import android.view.KeyEvent
+ import android.view.MotionEvent
+ import android.view.Surface
+@@ -31,8 +35,10 @@ import android.view.inputmethod.InputMethodManager
+ import android.widget.EditText
+ import android.widget.FrameLayout
+ import android.widget.LinearLayout
++import android.widget.PopupMenu
+ import android.widget.ProgressBar
+ import android.widget.TextView
++import android.widget.Toast
+ import mozilla.components.concept.engine.EngineSession.CookieBannerHandlingMode
+ import mozilla.components.concept.engine.EngineSession.TrackingProtectionPolicy
+ import org.mozilla.fenix.ext.components
+@@ -82,6 +88,10 @@ open class DualScreenBrowserActivity : Activity() {
+     private var addressField: EditText? = null
+     private var loadingBar: ProgressBar? = null
+     private var finishingFromPair = false
++    private lateinit var rootLayout: FrameLayout
++    private var lastMouseX = TARGET_WIDTH_PX / 2f
++    private var lastMouseY = TARGET_VIEWPORT_HEIGHT_PX / 2f
++    private var lastMouseEventAt = Long.MIN_VALUE
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+@@ -101,11 +111,19 @@ open class DualScreenBrowserActivity : Activity() {
+                 ViewGroup.LayoutParams.MATCH_PARENT,
+             )
+             setOnTouchListener { _, event ->
++                rememberMousePosition(event)
+                 DualScreenCoordinator.dispatchTouch(
+                     this@DualScreenBrowserActivity,
+                     event,
+                 )
+             }
++            setOnGenericMotionListener { _, event ->
++                rememberMousePosition(event)
++                DualScreenCoordinator.dispatchGenericMotion(
++                    this@DualScreenBrowserActivity,
++                    event,
++                )
++            }
+             holder.addCallback(object : SurfaceHolder.Callback {
+                 override fun surfaceCreated(holder: SurfaceHolder) {
+                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+@@ -135,11 +153,11 @@ open class DualScreenBrowserActivity : Activity() {
+                 }
+             })
+         }
+-        val root = FrameLayout(this).apply {
++        rootLayout = FrameLayout(this).apply {
+             addView(browserSurface)
+             if (isTopDisplay) addView(createToolbar())
+         }
+-        setContentView(root)
++        setContentView(rootLayout)
+         enterFullscreen()
+ 
+         components.core.engine.settings.apply {
+@@ -339,7 +357,21 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     @Deprecated("Deprecated in Android")
+     override fun onBackPressed() {
+-        DualScreenCoordinator.exitAll()
++        if (hasRecentMouseActivity()) {
++            showMouseContextMenu(lastMouseX, lastMouseY)
++        } else {
++            DualScreenCoordinator.exitAll()
++        }
++    }
++
++    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
++        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.isFromSource(InputDevice.SOURCE_MOUSE)) {
++            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
++                showMouseContextMenu(lastMouseX, lastMouseY)
++            }
++            return true
++        }
++        return super.dispatchKeyEvent(event)
+     }
+ 
+     override fun onUserLeaveHint() {
+@@ -352,6 +384,79 @@ open class DualScreenBrowserActivity : Activity() {
+         if (!isFinishing) finishAndRemoveTask()
+     }
+ 
++    internal fun showMouseContextMenu(
++        x: Float,
++        y: Float,
++        linkUri: String? = null,
++        linkText: String? = null,
++        mediaUri: String? = null,
++    ) {
++        runOnUiThread {
++            if (!::rootLayout.isInitialized || isFinishing) return@runOnUiThread
++            val anchor = View(this).apply {
++                layoutParams = FrameLayout.LayoutParams(dp(1), dp(1)).apply {
++                    leftMargin = x.toInt().coerceIn(0, (rootLayout.width - dp(1)).coerceAtLeast(0))
++                    topMargin = y.toInt().coerceIn(0, (rootLayout.height - dp(1)).coerceAtLeast(0))
++                }
++            }
++            rootLayout.addView(anchor)
++            anchor.post {
++                if (isFinishing || anchor.parent == null) return@post
++                PopupMenu(this, anchor).apply {
++                    if (!linkUri.isNullOrBlank()) {
++                        menu.add(0, 1, 0, "打开链接")
++                        menu.add(0, 2, 1, "复制链接")
++                        if (!linkText.isNullOrBlank()) menu.add(0, 3, 2, "复制链接文字")
++                    }
++                    if (!mediaUri.isNullOrBlank()) {
++                        menu.add(0, 4, 3, "打开图片或媒体")
++                        menu.add(0, 5, 4, "复制图片或媒体地址")
++                    }
++                    menu.add(0, 10, 10, "后退")
++                    menu.add(0, 11, 11, "前进")
++                    menu.add(0, 12, 12, "刷新")
++                    menu.add(0, 13, 13, "返回主页")
++                    menu.add(0, 14, 14, "复制当前网址")
++                    setOnMenuItemClickListener { item ->
++                        when (item.itemId) {
++                            1 -> DualScreenCoordinator.navigate(linkUri.orEmpty())
++                            2 -> copyText("链接", linkUri.orEmpty())
++                            3 -> copyText("链接文字", linkText.orEmpty())
++                            4 -> DualScreenCoordinator.navigate(mediaUri.orEmpty())
++                            5 -> copyText("媒体地址", mediaUri.orEmpty())
++                            10 -> DualScreenCoordinator.goBack()
++                            11 -> DualScreenCoordinator.goForward()
++                            12 -> DualScreenCoordinator.reload()
++                            13 -> DualScreenCoordinator.navigate(HOME_URL)
++                            14 -> copyText("网址", DualScreenCoordinator.currentUrl())
++                            else -> return@setOnMenuItemClickListener false
++                        }
++                        true
++                    }
++                    setOnDismissListener { rootLayout.removeView(anchor) }
++                    show()
++                }
++            }
++        }
++    }
++
++    private fun rememberMousePosition(event: MotionEvent) {
++        if (event.isFromSource(InputDevice.SOURCE_MOUSE) && event.pointerCount > 0) {
++            lastMouseX = event.x
++            lastMouseY = event.y
++            lastMouseEventAt = SystemClock.uptimeMillis()
++        }
++    }
++
++    private fun hasRecentMouseActivity(): Boolean =
++        SystemClock.uptimeMillis() - lastMouseEventAt <= MOUSE_BACK_GRACE_PERIOD_MS
++
++    private fun copyText(label: String, value: String) {
++        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++        clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
++        Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
++    }
++
+     private fun launchTopDisplay(url: String) {
+         val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+         val secondary = manager.displays.firstOrNull { it.displayId == TARGET_TOP_DISPLAY_ID }
+@@ -417,6 +522,7 @@ open class DualScreenBrowserActivity : Activity() {
+         const val TARGET_VIEWPORT_HEIGHT_PX = 1280
+         const val TARGET_CANVAS_HEIGHT_PX = 2560
+         const val TARGET_REFRESH_RATE = 60f
++        const val MOUSE_BACK_GRACE_PERIOD_MS = 3_000L
+     }
+ }
+ 
+@@ -493,6 +599,21 @@ private object DualScreenCoordinator {
+         return true
+     }
+ 
++    @Synchronized
++    fun dispatchGenericMotion(source: DualScreenBrowserActivity, event: MotionEvent): Boolean {
++        val activeSession = session ?: return false
++        val transformed = MotionEvent.obtain(event)
++        if (!source.isTopDisplay) {
++            transformed.offsetLocation(
++                0f,
++                DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX.toFloat(),
++            )
++        }
++        activeSession.panZoomController.onMotionEvent(transformed)
++        transformed.recycle()
++        return true
++    }
++
+     @Synchronized
+     fun createInputConnection(view: View, outAttrs: EditorInfo): InputConnection? {
+         val input = session?.textInput ?: return null
+@@ -600,6 +721,29 @@ private object DualScreenCoordinator {
+                     }
+                 }
+             })
++            setContentDelegate(object : GeckoSession.ContentDelegate {
++                override fun onContextMenu(
++                    session: GeckoSession,
++                    screenX: Int,
++                    screenY: Int,
++                    element: GeckoSession.ContentDelegate.ContextElement,
++                ) {
++                    val topHalf = screenY < DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX
++                    val target = if (topHalf) topDisplay.get() else controller.get()
++                    val localY = if (topHalf) {
++                        screenY
++                    } else {
++                        screenY - DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX
++                    }
++                    target?.showMouseContextMenu(
++                        screenX.toFloat(),
++                        localY.toFloat(),
++                        element.linkUri,
++                        element.linkText,
++                        element.srcUri,
++                    )
++                }
++            })
+             open(activity.components.core.geckoRuntime)
+             setActive(true)
+             setFocused(true)

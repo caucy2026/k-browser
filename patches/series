@@ -16,3 +16,4 @@ patches/0013-restore-blue-icon-and-handle-new-window-links.patch
 patches/0014-exit-both-displays-from-either-screen.patch
 patches/0015-balance-toolbar-action-buttons.patch
 patches/0016-restore-gecko-text-input-on-shared-surface.patch
+patches/0017-add-standard-mouse-context-menu.patch
