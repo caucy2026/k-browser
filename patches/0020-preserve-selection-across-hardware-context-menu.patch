@@ -1,0 +1,56 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 8e032aa..0edbc16 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -501,5 +501,6 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         copyText("所选内容", value)
++        DualScreenCoordinator.clearSelectedText()
+     }
+
+     private fun performTextAction(actionId: Int, successMessage: String) {
+@@ -667,6 +668,11 @@ private object DualScreenCoordinator {
+     @Synchronized
+     fun selectedText(): String? = selectedText
+
++    @Synchronized
++    fun clearSelectedText() {
++        selectedText = null
++    }
++
+     @Synchronized
+     fun attach(activity: DualScreenBrowserActivity, initialUrl: String) {
+         exiting = false
+@@ -790,6 +796,7 @@ private object DualScreenCoordinator {
+             setProgressDelegate(object : GeckoSession.ProgressDelegate {
+                 override fun onPageStart(session: GeckoSession, url: String) {
+                     currentUrl = url
++                    selectedText = null
+                     topDisplay.get()?.pageStarted(url)
+                 }
+ 
+@@ -867,17 +874,15 @@ private object DualScreenCoordinator {
+                     session: GeckoSession,
+                     selection: GeckoSession.SelectionActionDelegate.Selection,
+                 ) {
+-                    selectedText = selection.text.takeIf { it.isNotBlank() }
++                    selection.text.takeIf { it.isNotBlank() }?.let {
++                        selectedText = it
++                    }
+                 }
+ 
+-                override fun onHideAction(session: GeckoSession, reason: Int) {
+-                    if (
+-                        reason == GeckoSession.SelectionActionDelegate.HIDE_REASON_NO_SELECTION ||
+-                        reason == GeckoSession.SelectionActionDelegate.HIDE_REASON_INVISIBLE_SELECTION
+-                    ) {
+-                        selectedText = null
+-                    }
+-                }
++                // The target hardware maps the secondary mouse button to Android Back.
++                // Gecko hides its visual selection before that Back reaches the Activity,
++                // so keep the last non-empty selection until it is copied or the page changes.
++                override fun onHideAction(session: GeckoSession, reason: Int) = Unit
+             })
+             open(activity.components.core.geckoRuntime)
+             setActive(true)
