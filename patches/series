@@ -14,3 +14,4 @@ patches/0011-polish-ui-sites-icon-and-hardware.patch
 patches/0012-add-single-screen-launcher-shortcut.patch
 patches/0013-restore-blue-icon-and-handle-new-window-links.patch
 patches/0014-exit-both-displays-from-either-screen.patch
+patches/0015-balance-toolbar-action-buttons.patch

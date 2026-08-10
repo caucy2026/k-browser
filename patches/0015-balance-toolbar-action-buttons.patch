@@ -1,0 +1,30 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -205,10 +205,10 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         addressField = address
+         toolbar.addView(address)
+-        toolbar.addView(navButton("前往", "打开网址", dp(76), true) {
++        toolbar.addView(navButton("前往", "打开网址", dp(64), true) {
+             submitAddress(address)
+         })
+-        toolbar.addView(navButton("退出", "退出双屏浏览器", dp(76), true) {
++        toolbar.addView(navButton("退出", "退出双屏浏览器", dp(64), true) {
+             DualScreenCoordinator.exitAll()
+         })
+ 
+@@ -246,7 +246,12 @@ open class DualScreenBrowserActivity : Activity() {
+                 cornerRadius = dp(12).toFloat()
+             }
+             setOnClickListener { action() }
+-            layoutParams = LinearLayout.LayoutParams(width, dp(58))
++            layoutParams = LinearLayout.LayoutParams(
++                width,
++                if (emphasized) dp(48) else dp(58),
++            ).apply {
++                if (emphasized) marginStart = dp(4)
++            }
+         }
+ 
+     private fun submitAddress(address: EditText) {
