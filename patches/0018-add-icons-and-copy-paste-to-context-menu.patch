@@ -1,0 +1,100 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 95c63e3..995b91e 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -403,20 +403,28 @@ open class DualScreenBrowserActivity : Activity() {
+             anchor.post {
+                 if (isFinishing || anchor.parent == null) return@post
+                 PopupMenu(this, anchor).apply {
++                    setForceShowIcon(true)
++                    fun addItem(id: Int, order: Int, title: String, icon: Int) =
++                        menu.add(0, id, order, title).setIcon(icon)
++
+                     if (!linkUri.isNullOrBlank()) {
+-                        menu.add(0, 1, 0, "打开链接")
+-                        menu.add(0, 2, 1, "复制链接")
+-                        if (!linkText.isNullOrBlank()) menu.add(0, 3, 2, "复制链接文字")
++                        addItem(1, 0, "打开链接", android.R.drawable.ic_menu_view)
++                        addItem(2, 1, "复制链接", android.R.drawable.ic_menu_share)
++                        if (!linkText.isNullOrBlank()) {
++                            addItem(3, 2, "复制链接文字", android.R.drawable.ic_menu_edit)
++                        }
+                     }
+                     if (!mediaUri.isNullOrBlank()) {
+-                        menu.add(0, 4, 3, "打开图片或媒体")
+-                        menu.add(0, 5, 4, "复制图片或媒体地址")
++                        addItem(4, 3, "打开图片或媒体", android.R.drawable.ic_menu_gallery)
++                        addItem(5, 4, "复制图片或媒体地址", android.R.drawable.ic_menu_save)
+                     }
+-                    menu.add(0, 10, 10, "后退")
+-                    menu.add(0, 11, 11, "前进")
+-                    menu.add(0, 12, 12, "刷新")
+-                    menu.add(0, 13, 13, "返回主页")
+-                    menu.add(0, 14, 14, "复制当前网址")
++                    addItem(6, 6, "复制所选内容", android.R.drawable.ic_menu_edit)
++                    addItem(7, 7, "粘贴", android.R.drawable.ic_menu_send)
++                    addItem(10, 10, "后退", android.R.drawable.ic_media_previous)
++                    addItem(11, 11, "前进", android.R.drawable.ic_media_next)
++                    addItem(12, 12, "刷新", android.R.drawable.ic_popup_sync)
++                    addItem(13, 13, "返回主页", android.R.drawable.ic_menu_view)
++                    addItem(14, 14, "复制当前网址", android.R.drawable.ic_menu_set_as)
+                     setOnMenuItemClickListener { item ->
+                         when (item.itemId) {
+                             1 -> DualScreenCoordinator.navigate(linkUri.orEmpty())
+@@ -424,6 +432,8 @@ open class DualScreenBrowserActivity : Activity() {
+                             3 -> copyText("链接文字", linkText.orEmpty())
+                             4 -> DualScreenCoordinator.navigate(mediaUri.orEmpty())
+                             5 -> copyText("媒体地址", mediaUri.orEmpty())
++                            6 -> performTextAction(android.R.id.copy, "已复制所选内容")
++                            7 -> performTextAction(android.R.id.paste, "已粘贴")
+                             10 -> DualScreenCoordinator.goBack()
+                             11 -> DualScreenCoordinator.goForward()
+                             12 -> DualScreenCoordinator.reload()
+@@ -457,6 +467,22 @@ open class DualScreenBrowserActivity : Activity() {
+         Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
+     }
+ 
++    private fun performTextAction(actionId: Int, successMessage: String) {
++        val performed = DualScreenCoordinator.performTextContextAction(browserSurface, actionId)
++        val committed = if (!performed && actionId == android.R.id.paste) {
++            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++            val text = clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
++            !text.isNullOrEmpty() && DualScreenCoordinator.commitText(browserSurface, text)
++        } else {
++            false
++        }
++        if (performed || committed) {
++            Toast.makeText(this, successMessage, Toast.LENGTH_SHORT).show()
++        } else {
++            Toast.makeText(this, "当前页面没有可操作的文字输入位置", Toast.LENGTH_SHORT).show()
++        }
++    }
++
+     private fun launchTopDisplay(url: String) {
+         val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+         val secondary = manager.displays.firstOrNull { it.displayId == TARGET_TOP_DISPLAY_ID }
+@@ -621,6 +647,24 @@ private object DualScreenCoordinator {
+         return input.onCreateInputConnection(outAttrs)
+     }
+ 
++    @Synchronized
++    fun performTextContextAction(view: View, actionId: Int): Boolean {
++        val input = session?.textInput ?: return false
++        if (input.view !== view) input.setView(view)
++        view.requestFocus()
++        val connection = input.onCreateInputConnection(EditorInfo()) ?: return false
++        return connection.performContextMenuAction(actionId)
++    }
++
++    @Synchronized
++    fun commitText(view: View, text: String): Boolean {
++        val input = session?.textInput ?: return false
++        if (input.view !== view) input.setView(view)
++        view.requestFocus()
++        val connection = input.onCreateInputConnection(EditorInfo()) ?: return false
++        return connection.commitText(text, 1)
++    }
++
+     @Synchronized
+     fun onKeyPreIme(keyCode: Int, event: KeyEvent): Boolean =
+         session?.textInput?.onKeyPreIme(keyCode, event) ?: false

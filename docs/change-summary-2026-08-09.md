@@ -161,6 +161,18 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 - 本地构建 4215 个任务通过，APK v2/v3 签名通过，未发现 `FATAL EXCEPTION`；APK SHA-256：
   `2dc6605652afb2cc511eb59ac7e471b8ead894d1ce4968e51668a0aa5dfb6afa`。
 
+### 1.2.0-rc8 复制粘贴与方向锁定（2026-08-10）
+
+- 右键菜单每项增加图标，并补充“复制所选内容”“粘贴”。
+- “复制所选内容”始终可操作；通过 Gecko `SelectionActionDelegate` 取得网页正文选区后直接写入
+  Android 剪贴板，不再错误依赖输入框焦点或 `InputConnection`。
+- “粘贴”仅在系统剪贴板存在非空文本时启用；无可粘贴内容时保持灰色，避免无效点击。
+- 双屏两个 Activity 在 Manifest 横屏声明之外，额外在创建和恢复时强制请求横屏；双屏会话运行期间
+  不响应传感器或其他应用引起的方向切换，始终保持当前 `1920×1280×2` 拼接布局。
+- 本地完整 release 构建通过（4215 个任务），APK v2/v3 签名校验通过。
+- 63 曾完成 rc8 前一候选的安装并确认 D0/D2 Activity 同时运行；最终候选复测时 63 ADB 离线，
+  62 主屏正由 Winlator 占用，因此未抢占设备，等待 63 恢复后补充最终交互证据。
+
 ## 6. `kemi-rd` 文档对当前实现的帮助
 
 - `chip.md` 明确设备逻辑显示为 D0/D2、分辨率均为 `1920×1280`，且 Display ID
@@ -201,9 +213,9 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 ## 10. 当前备份点
 
 - 源码以 `main` 最新提交为准，补丁序列可在固定上游提交上完整重放。
-- 候选 APK：`bin/KBrowser-arm64.apk`，SHA-256：
-  `2dc6605652afb2cc511eb59ac7e471b8ead894d1ce4968e51668a0aa5dfb6afa`。
+- 候选 APK：`bin/KBrowser-arm64.apk`，SHA-256 以同目录
+  `bin/KBrowser-arm64.apk.sha256` 为准。
 - `browser` 子模块工作树保持补丁展开状态；唯一可复现来源是固定上游提交和
-  `patches/series` 的 0001–0017 顺序，不直接提交展开后的子模块指针。
+  `patches/series` 的 0001–0019 顺序，不直接提交展开后的子模块指针。
 - 完整 Git bundle 存放在忽略目录 `artifacts/git-backups/`，生成后必须执行
   `git bundle verify`。

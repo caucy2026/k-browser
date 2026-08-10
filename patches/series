@@ -17,3 +17,5 @@ patches/0014-exit-both-displays-from-either-screen.patch
 patches/0015-balance-toolbar-action-buttons.patch
 patches/0016-restore-gecko-text-input-on-shared-surface.patch
 patches/0017-add-standard-mouse-context-menu.patch
+patches/0018-add-icons-and-copy-paste-to-context-menu.patch
+patches/0019-fix-selection-clipboard-and-lock-orientation.patch

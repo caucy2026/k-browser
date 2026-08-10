@@ -1,0 +1,134 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 995b91e..8e032aa 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -6,6 +6,7 @@ import android.content.ClipData
+ import android.content.ClipboardManager
+ import android.content.Context
+ import android.content.Intent
++import android.content.pm.ActivityInfo
+ import android.graphics.Color
+ import android.graphics.drawable.ColorDrawable
+ import android.graphics.drawable.GradientDrawable
+@@ -88,6 +89,7 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
++        lockDualScreenOrientation()
+         if (!isTopDisplay && display?.displayId != Display.DEFAULT_DISPLAY) {
+             redirectControllerToDisplay0()
+             return
+@@ -184,6 +186,7 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     override fun onResume() {
+         super.onResume()
++        lockDualScreenOrientation()
+         // singleTask/singleInstance activities can survive while the Gecko
+         // session and EGL compositor are recreated. SurfaceView will not emit
+         // surfaceCreated again in that case, so always rebind its live Surface.
+@@ -423,8 +426,18 @@ open class DualScreenBrowserActivity : Activity() {
+                         addItem(4, 3, "打开图片或媒体", android.R.drawable.ic_menu_gallery)
+                         addItem(5, 4, "复制图片或媒体地址", android.R.drawable.ic_menu_save)
+                     }
+-                    addItem(6, 6, "复制所选内容", android.R.drawable.ic_menu_edit)
+-                    addItem(7, 7, "粘贴", android.R.drawable.ic_menu_send)
++                    val selectedText = DualScreenCoordinator.selectedText()
++                    addItem(6, 6, "复制所选内容", android.R.drawable.ic_menu_edit)
++                    val clipboard =
++                        getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++                    val pasteText = clipboard.primaryClip
++                        ?.takeIf { clipboard.hasPrimaryClip() && it.itemCount > 0 }
++                        ?.getItemAt(0)
++                        ?.coerceToText(this@DualScreenBrowserActivity)
++                        ?.toString()
++                    addItem(7, 7, "粘贴", android.R.drawable.ic_menu_send).apply {
++                        isEnabled = !pasteText.isNullOrEmpty()
++                    }
+                     addItem(10, 10, "后退", android.R.drawable.ic_media_previous)
+                     addItem(11, 11, "前进", android.R.drawable.ic_media_next)
+                     addItem(12, 12, "刷新", android.R.drawable.ic_popup_sync)
+@@ -438,7 +454,7 @@ open class DualScreenBrowserActivity : Activity() {
+                             3 -> copyText("链接文字", linkText.orEmpty())
+                             4 -> DualScreenCoordinator.navigate(mediaUri.orEmpty())
+                             5 -> copyText("媒体地址", mediaUri.orEmpty())
+-                            6 -> performTextAction(android.R.id.copy, "已复制所选内容")
++                            6 -> copySelectedText(selectedText ?: linkText)
+                             7 -> performTextAction(android.R.id.paste, "已粘贴")
+                             10 -> DualScreenCoordinator.goBack()
+                             11 -> DualScreenCoordinator.goForward()
+@@ -477,6 +493,14 @@ open class DualScreenBrowserActivity : Activity() {
+         Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
+     }
+ 
++    private fun copySelectedText(value: String?) {
++        if (value.isNullOrBlank()) {
++            Toast.makeText(this, "请先选择要复制的内容", Toast.LENGTH_SHORT).show()
++            return
++        }
++        copyText("所选内容", value)
++    }
++
+     private fun performTextAction(actionId: Int, successMessage: String) {
+         val performed = DualScreenCoordinator.performTextContextAction(browserSurface, actionId)
+         val committed = if (!performed && actionId == android.R.id.paste) {
+@@ -549,6 +573,12 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+     }
+ 
++    private fun lockDualScreenOrientation() {
++        if (requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
++            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
++        }
++    }
++
+     companion object {
+         const val EXTRA_URL = "url"
+         const val HOME_URL = "resource://android/assets/dual_screen_home.html"
+@@ -626,11 +656,15 @@ private object DualScreenCoordinator {
+     private var topSurface: Surface? = null
+     private var bottomSurface: Surface? = null
+     private var currentUrl = DualScreenBrowserActivity.DEFAULT_URL
++    private var selectedText: String? = null
+     private var exiting = false
+ 
+     @Synchronized
+     fun currentUrl(): String = currentUrl
+ 
++    @Synchronized
++    fun selectedText(): String? = selectedText
++
+     @Synchronized
+     fun attach(activity: DualScreenBrowserActivity, initialUrl: String) {
+         exiting = false
+@@ -825,6 +859,23 @@ private object DualScreenCoordinator {
+                     )
+                 }
+             })
++            setSelectionActionDelegate(object : GeckoSession.SelectionActionDelegate {
++                override fun onShowActionRequest(
++                    session: GeckoSession,
++                    selection: GeckoSession.SelectionActionDelegate.Selection,
++                ) {
++                    selectedText = selection.text.takeIf { it.isNotBlank() }
++                }
++
++                override fun onHideAction(session: GeckoSession, reason: Int) {
++                    if (
++                        reason == GeckoSession.SelectionActionDelegate.HIDE_REASON_NO_SELECTION ||
++                        reason == GeckoSession.SelectionActionDelegate.HIDE_REASON_INVISIBLE_SELECTION
++                    ) {
++                        selectedText = null
++                    }
++                }
++            })
+             open(activity.components.core.geckoRuntime)
+             setActive(true)
+             setFocused(true)
+@@ -871,6 +922,7 @@ private object DualScreenCoordinator {
+         geckoDisplay = null
+         activeSession?.close()
+         session = null
++        selectedText = null
+         compositor?.stop()
+         compositor = null
+         topSurface = null
