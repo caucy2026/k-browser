@@ -9,7 +9,8 @@
 - GPU：ARM Mali-G52，OpenGL ES 3.2；双屏当前均由 SurfaceFlinger Client/GPU 合成。
 - 内存：约 5.5GB。
 - 外屏物理输出由系统执行 `ROT_180`，输入系统已将触摸映射为 orientation 2；应用禁止再次旋转坐标。
-- VSync 周期：16.67ms，目标同步频率固定为每帧最多一次。
+- VSync 周期：16.67ms，应用层目标为每个 Gecko 内容帧最多提交一次两块输出；这不代表
+  两个物理面板的 VSync 相位或扫描线已硬件锁定。
 - 物理显示 ID 为 0/1，Android 逻辑显示与 LayerStack 为 D0/0、D2/2；录屏与 SurfaceControl 取证不能混用两套 ID。
 
 ## `kemi-rd` 系统文档结论
@@ -43,6 +44,10 @@
 7. Display 2 的 180 度补偿交给系统显示与输入栈，应用层不得增加旋转矩阵。
 8. 应用和两块输出 Surface 显式启用硬件加速，并把 Surface 帧率声明为固定 60Hz，匹配真机显示模式，避免合成器在不同刷新策略间切换。
 9. 首排触控目标高度不低于 56dp；退出操作由会话总控统一关闭两个 Activity，不能只关闭当前显示。
+
+完整的方案选择、EGL/Surface 生命周期、任务栈、输入法、鼠标、剪贴板和测试误判说明见
+[`multi-display-browser-lessons.md`](multi-display-browser-lessons.md)。其中的 400ms 启动延时、D0/D2 角色和
+固定 1280px 偏移均为当前硬件基线，不应被其他设备无条件复制。
 
 ## 性能闭环
 

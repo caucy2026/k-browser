@@ -95,6 +95,8 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 目标设备的固定参数与性能约束见 [docs/hardware-profile.md](docs/hardware-profile.md)。
 双屏/单屏实现、跨屏启动路由及最终验收见
 [docs/dual-single-screen-architecture.md](docs/dual-single-screen-architecture.md)。
+供其他项目复用的方案选择、底层细节、失败案例和踩坑清单见
+[docs/multi-display-browser-lessons.md](docs/multi-display-browser-lessons.md)。
 版本与全部定制内容见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## CI 架构

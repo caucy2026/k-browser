@@ -3,6 +3,9 @@
 更新日期：2026-08-11<br>
 当前正式版本：`1.2.1`
 
+面向其他项目的失败方案、OEM 差异、EGL/Surface/输入细节和测试避坑清单见
+[`multi-display-browser-lessons.md`](multi-display-browser-lessons.md)。
+
 ## 1. 产品模式
 
 KEMI 双屏浏览器基于 Iceraven/Fenix 与 GeckoView，不依赖系统 WebView。应用提供两种入口：
@@ -44,6 +47,10 @@ KEMI 双屏浏览器基于 Iceraven/Fenix 与 GeckoView，不依赖系统 WebVie
 - 两屏的后退、前进、刷新、主页、地址跳转和加载进度都操作同一个 GeckoSession。
 - `GeckoInputSurface` 把 `InputConnection`、硬键和输入法焦点绑定到实际触摸的 Activity，因此两块屏的网页输入框都可弹出软键盘。
 - 鼠标右键显示通用网页菜单；车机把右键降级为 Android Back 时，只有确实存在近期鼠标事件才走菜单逻辑。网页选区通过系统 `ClipboardManager` 写入主剪贴板，供输入法和其他 App 使用。
+
+当前正式验收覆盖“一次由一块屏完成一个手势”。两块触摸屏同时按下时的跨 Activity
+pointer stream 所有权锁尚未实现，不属于 `1.2.1` 的承诺；需要该能力的项目应从首个
+`ACTION_DOWN` 到对应的 `ACTION_UP/ACTION_CANCEL` 显式锁定手势来源。
 
 ## 5. 从任意屏启动双屏模式
 

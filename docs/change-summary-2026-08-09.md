@@ -23,7 +23,7 @@
 | `0004` | 精简主页布局，增加搜索；同步两屏的导航、地址、加载进度和工具栏状态。 |
 | `0005` | Google Maven 改为可直接访问的仓库端点，提高本地构建可用性。 |
 | `0006` | 修复 Gradle Python 环境缓存检查，使本地依赖复用可正常执行。 |
-| `0007` | 修复复制模式：D0 总控与 D2 顶部拆为两个 Activity；按实际 Display 判定角色；D2 为第一页、D0 固定加 1280px；加入触摸源独占和统一退出。 |
+| `0007` | 修复复制模式：D0 总控与 D2 顶部拆为两个 Activity；按实际 Display 判定角色；D2 为第一页、D0 固定加 1280px；加入早期触摸源保护和统一退出。 |
 | `0008` | 收藏页加入 KEMI 知识库。 |
 | `0009` | 废弃双 Session 追帧同步；一个 GeckoSession 渲染 1920×2560 帧，由共享 EGL 合成器同时裁切到 D2/D0；两屏触摸进入同一 PanZoomController。 |
 | `0010` | 修复副屏 `singleInstance` 复用黑屏：在 `onNewIntent/onResume` 重新绑定存活 Surface，并复用已缓存的 Gecko 首帧。 |
@@ -35,7 +35,8 @@
 - `DualScreenTopActivity`：D2 顶部显示，`singleInstance`。
 - 通过 `DisplayManager.displays` 枚举显示；优先选择逻辑 Display 2，但不把数组下标当作 Display ID。
 - 从任意启动器所在屏进入时，最终都重定向为 D0 总控 + D2 顶部显示。
-- 滚动手势期间只有触摸源可发布逻辑位置，程序性跟随回调在保护窗口内被忽略。
+- `0007` 时使用双 Session 和逻辑位置保护；该路径已被 `0009` 的单 Session 共享 PanZoom 取代。
+  当前两屏事件调用虽串行化，但没有对两屏同时按下实现跨 Activity 手势所有权锁。
 
 ## 3. 界面与默认站点
 

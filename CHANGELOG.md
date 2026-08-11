@@ -17,6 +17,8 @@
   `docs/dual-single-screen-architecture.md`。
 - 正式 APK：`bin/DualScreenBrowser-v1.2.1-arm64-release.apk`，SHA-256：
   `d4d88472c2d1155dad63d6263afe1229ba81ee038988d34f0fb2221b59484f5c`。
+- 为其他项目补充 `docs/multi-display-browser-lessons.md`，集中记录双 Session 抖动、Surface 恢复黑屏、
+  跨屏 task affinity、IME、右键/Back、剪贴板、逻辑/物理显示 ID 和测试假通过等经验及适用边界。
 
 ## 1.2.0 正式版（2026-08-11）
 
@@ -27,7 +29,8 @@
 - 目标硬件固定为 Android 12、arm64、Display 0/2，单屏 `1920×1280@60Hz`。
 - 使用一个 GeckoSession、一个 DOM 和一张 `1920×2560` Gecko 合成帧。
 - Display 2 显示页面顶部 `0–1279`，Display 0 显示紧邻的 `1280–2559`；不是镜像或两个网页同步模拟。
-- 单 EGL 合成线程依次提交两块 Surface，滚动采用触摸源独占，避免双向反馈和抖动。
+- 单 EGL 合成线程依次提交两块 Surface；两屏事件进入同一个 PanZoom，不再同步两个页面的
+  scrollY，因而避免双向反馈和抖动。当前验收为一次由一块屏完成一个手势，不承诺两屏同时多点触摸。
 - Surface 生命周期重绑定，覆盖冷启动、HOME 后恢复和 retained `singleInstance` 副屏 Activity。
 - 双屏模式固定横屏并禁止旋转。
 
