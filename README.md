@@ -38,7 +38,8 @@ KBROWSER_VERSION_NAME=1.2.0-local ./scripts/build-local.sh
 ```
 
 默认读取 `/Users/kemi/coding/priv/kbrowser-release.jks`、`release-signing.properties` 和
-`kbrowser-release-cert.pem`；可通过 `KBROWSER_PRIVATE_DIR` 改用其他安全目录。
+`pem/kbrowser-release-cert.pem`；完整的多 APK 共用签名说明保存在
+`/Users/kemi/coding/priv/pem/README-APK正式签名.md`。可通过 `KBROWSER_PRIVATE_DIR` 改用其他安全目录。
 
 `prepare-source.sh` 会完成以下闭环：
 
