@@ -1,0 +1,29 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index c624bd1..c796805 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -228,7 +228,6 @@ open class DualScreenBrowserActivity : Activity() {
+         toolbar.addView(navButton("← 后退", "后退") { DualScreenCoordinator.goBack() })
+         toolbar.addView(navButton("前进 →", "前进") { DualScreenCoordinator.goForward() })
+         toolbar.addView(navButton("↻ 刷新", "刷新") { DualScreenCoordinator.reload() })
+-        toolbar.addView(navButton("⌂ 主页", "主页") { DualScreenCoordinator.navigate(HOME_URL) })
+ 
+         val address = EditText(this).apply {
+             hint = "搜索或输入网址"
+@@ -259,10 +258,13 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         addressField = address
+         toolbar.addView(address)
+-        toolbar.addView(navButton("前往", "打开网址", dp(72), true) {
++        toolbar.addView(navButton("打开", "打开网址", dp(72), true) {
+             submitAddress(address)
+         })
+-        toolbar.addView(navButton("退出", "退出双屏浏览器", dp(72), true) {
++        toolbar.addView(navButton("⌂ 主页", "主页", dp(84)) {
++            DualScreenCoordinator.navigate(HOME_URL)
++        })
++        toolbar.addView(navButton("退出", "退出双屏浏览器", dp(72)) {
+             DualScreenCoordinator.exitAll()
+         })
+ 
+

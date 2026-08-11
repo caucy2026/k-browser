@@ -22,3 +22,4 @@ patches/0019-fix-selection-clipboard-and-lock-orientation.patch
 patches/0020-preserve-selection-across-hardware-context-menu.patch
 patches/0025-consolidate-clean-browser-and-single-screen-copy.patch
 patches/0026-redesign-large-balanced-navigation-controls.patch
+patches/0027-separate-history-and-address-actions.patch
