@@ -4,9 +4,10 @@ set -eu
 
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSION_NAME=${1:-1.0.0}
-KEYSTORE_DIR="$PROJECT_DIR/keystore"
-KEYSTORE_PATH="$KEYSTORE_DIR/kbrowser-release.jks"
-SIGNING_PROPERTIES="$KEYSTORE_DIR/release-signing.properties"
+PRIVATE_DIR=${KBROWSER_PRIVATE_DIR:-/Users/kemi/coding/priv}
+KEYSTORE_PATH=${KBROWSER_RELEASE_KEYSTORE_PATH:-"$PRIVATE_DIR/kbrowser-release.jks"}
+SIGNING_PROPERTIES=${KBROWSER_RELEASE_SIGNING_PROPERTIES:-"$PRIVATE_DIR/release-signing.properties"}
+RELEASE_CERT=${KBROWSER_RELEASE_CERT_PATH:-"$PRIVATE_DIR/kbrowser-release-cert.pem"}
 
 [ -f "$KEYSTORE_PATH" ] || {
   echo "FAIL: release keystore not found: $KEYSTORE_PATH" >&2
@@ -47,7 +48,7 @@ APKSIGNER=$(find "$SDK_DIR/build-tools" -type f -name apksigner -print | sort -V
 shasum -a 256 "$RELEASE_APK" > "$RELEASE_APK.sha256"
 APK_SHA256=$(awk '{print $1}' "$RELEASE_APK.sha256")
 SOURCE_COMMIT=$(git -C "$PROJECT_DIR" rev-parse HEAD)
-CERT_SHA256=$(openssl x509 -in "$KEYSTORE_DIR/kbrowser-release-cert.pem" \
+CERT_SHA256=$(openssl x509 -in "$RELEASE_CERT" \
   -noout -fingerprint -sha256 | sed 's/^.*=//')
 {
   printf 'versionName=%s\n' "$VERSION_NAME"

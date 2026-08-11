@@ -14,6 +14,7 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 - 任意屏返回、退出或离开都会同步结束另一屏；默认双屏，长按图标可进入单屏模式。
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
 - 当前可复现补丁入口为 0001–0020 + 0025–0029，最新本地候选版本为 `1.2.0-rc23`。
+- 当前正式签名版本为 `1.2.0`，产物为 `bin/DualScreenBrowser-v1.2.0-arm64-release.apk`。
 - KEMI 构建不显示 Firefox/Iceraven 注册、首次引导、Pocket/赞助内容或默认浏览器推广；
   Gecko 仅作为开源网页引擎保留。
 
@@ -29,6 +30,15 @@ cd k-browser
 ./scripts/prepare-source.sh
 KBROWSER_VERSION_NAME=1.2.0-local ./scripts/build-local.sh
 ```
+
+正式发布使用机器外置私钥目录，不把私钥提交到 Git：
+
+```sh
+./scripts/build-release.sh 1.2.0
+```
+
+默认读取 `/Users/kemi/coding/priv/kbrowser-release.jks`、`release-signing.properties` 和
+`kbrowser-release-cert.pem`；可通过 `KBROWSER_PRIVATE_DIR` 改用其他安全目录。
 
 `prepare-source.sh` 会完成以下闭环：
 

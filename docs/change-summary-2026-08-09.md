@@ -313,3 +313,18 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 - 63 Display 0 单屏真机验证：启动后的 `EditText` 无 text 属性，证明地址栏确实为空；点击坐标落在
   “打开”按钮后等待加载，地址栏变为 `https://kemi.newlinksz.com/kd/`。最近 1200 行日志无浏览器
   `FATAL EXCEPTION`，副屏原有应用未被停止或覆盖。
+
+### KEMI 正式发布签名（2026-08-11）
+
+- 正式私钥生成在 `/Users/kemi/coding/priv/kbrowser-release.jks`，别名为 `kbrowser-release`，算法为
+  RSA 4096 / SHA256withRSA，有效期 10000 天；随机密码配置与公开 PEM 证书保存在同一私有目录。
+- 私有目录权限为 700，三个签名文件权限为 600。私钥和密码不进入 k-browser Git 仓库。
+- 正式证书 SHA-256 指纹为
+  `33:20:07:ED:D3:C2:07:82:2C:E8:D9:77:05:4F:3A:7E:69:8F:49:18:91:BD:EF:2A:10:46:E8:66:CD:83:8A:5C`。
+- `scripts/build-release.sh` 默认从 `/Users/kemi/coding/priv` 读取正式签名，也支持通过
+  `KBROWSER_PRIVATE_DIR` 选择其他安全目录；日常 `build-local.sh` 仍保留测试签名，避免误用生产私钥。
+- `1.2.0` 正式构建 4215 个任务通过，APK v2/v3 签名验证通过；签名者 DN 和证书 SHA-256 均与
+  `/Users/kemi/coding/priv` 的正式证书一致。正式 APK SHA-256 为
+  `7fadde538a217ecb919d298c45c7268357b2265ccfeedb517af653ef15948cdf`。
+- `bin/KBrowser-arm64.apk` 已更新为正式签名包，并另存为
+  `bin/DualScreenBrowser-v1.2.0-arm64-release.apk`；对应 `.sha256` 和 `.manifest.txt` 同步生成。
