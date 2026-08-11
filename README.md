@@ -69,7 +69,7 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 构建会自动为未签名 APK 生成本机测试证书；正式发布必须改用离线保存的正式证书。
 已准备过的源码再次执行 `prepare-source.sh` 会安全跳过，不会重复打补丁。
 
-2026-08-10 已验证 0001–0015 能在固定的干净上游提交上按序完整重放；随后本地完成
+2026-08-11 已验证 0001–0020 + 0025–0029 能在固定的干净上游提交上按序完整重放；随后本地完成
 4215 个 Gradle 任务、R8、资源优化、APK 打包以及 v2/v3 签名校验。首次无增量构建
 约需 9 分钟，增量构建通常更快，实际时间取决于网络与机器性能。
 
@@ -80,8 +80,9 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 - `scripts/prepare-source.sh`：初始化递归子模块并应用全部补丁。
 - `scripts/build-local.sh`：本机 arm64 构建、签名、校验和 `bin/` 产物输出。
 - `docs/`：硬件约束、开发流程、改动记录和真机结论。
-- `bin/`、`test-results/`、`keystore/`、`.tools/`：本地构建产物、测试证据、私钥和工具，
-  均被 Git 忽略；特别是正式签名私钥必须单独离线备份，不能上传 GitHub。
+- `bin/`、`test-results/`、`.tools/`：本地构建产物、测试证据和工具，均被 Git 忽略。
+- `/Users/kemi/coding/priv/pem/kemi-unified-release`：仓库外唯一正式签名目录，必须整体加密离线备份，
+  不能上传 GitHub；仓库内不再保存任何正式 JKS 或密码配置。
 
 ## 真机快速验证
 

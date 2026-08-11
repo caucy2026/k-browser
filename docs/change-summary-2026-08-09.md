@@ -215,19 +215,23 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 
 - 收藏首页新增 `https://kemi.newlinksz.com/kd/`，显示为“KEMI 知识库”。
 - 正式 release 使用项目独立签名，不再使用 Android debug 或 CI 临时测试证书。
-- release 证书 SHA-256 指纹：
-  `73:D6:B0:55:B9:DC:06:59:D7:C0:A3:D9:D5:BB:49:E1:B8:C6:49:8A:A1:2C:DD:B2:A2:8C:64:9D:53:7B:11:76`。
-- 私钥、证书和本地口令文件统一保存在忽略目录 `keystore/`；该目录必须离线备份，
-  后续升级包必须继续使用同一证书，否则 Android 无法覆盖安装。
+- 唯一正式证书 SHA-256 指纹：
+  `C3:09:13:B0:C3:5B:84:50:F6:49:61:F5:B3:C7:6C:E8:30:4A:F0:76:0C:59:1E:40:BC:45:82:59:8C:38:8D:04`。
+- 私钥、密码配置、PEM 和指纹统一保存在仓库外
+  `/Users/kemi/coding/priv/pem/kemi-unified-release`；该目录必须整体加密离线备份，后续所有 KEMI APK
+  统一使用同一证书。仓库内旧 `keystore/` 与两套过渡证书已经删除。
+- 安装过旧/过渡证书 APK 的设备首次切换统一证书时必须卸载旧包；统一证书建立安装基线后，后续版本保持同一
+  包名、递增 `versionCode` 和同一证书即可覆盖升级。
 - 正式构建入口：`./scripts/build-release.sh <versionName>`。
 
 ## 10. 当前备份点
 
 - 源码以 `main` 最新提交为准，补丁序列可在固定上游提交上完整重放。
-- 候选 APK：`bin/KBrowser-arm64.apk`，SHA-256 以同目录
-  `bin/KBrowser-arm64.apk.sha256` 为准。
+- 正式 APK：`bin/DualScreenBrowser-v1.2.0-arm64-release.apk`，SHA-256 为
+  `6f2ff012c5f4cf52061ea04242da3098d765fed889043e323fe3ab2d60c505ef`；通用路径
+  `bin/KBrowser-arm64.apk` 指向同一构建内容。
 - `browser` 子模块工作树保持补丁展开状态；唯一可复现来源是固定上游提交和
-  `patches/series` 的 0001–0024 顺序，不直接提交展开后的子模块指针。
+  `patches/series` 的 0001–0020 + 0025–0029 顺序，不直接提交展开后的子模块指针。
 - 完整 Git bundle 存放在忽略目录 `artifacts/git-backups/`，生成后必须执行
   `git bundle verify`。
 
@@ -328,3 +332,22 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
   `6f2ff012c5f4cf52061ea04242da3098d765fed889043e323fe3ab2d60c505ef`。
 - `bin/KBrowser-arm64.apk` 已更新为正式签名包，并另存为
   `bin/DualScreenBrowser-v1.2.0-arm64-release.apk`；对应 `.sha256` 和 `.manifest.txt` 同步生成。
+
+## 11. 最近改动交接摘要（2026-08-10 至 2026-08-11）
+
+- 鼠标与剪贴板：`1be1954`–`7455c3f` 增加通用右键菜单、图标化复制粘贴、硬件 Back 兼容、网页选区
+  预保存和 Android 系统剪贴板写入；复制不依赖输入框焦点，空剪贴板时粘贴禁用。
+- 干净开源界面：`7486186` 移除上游账户注册、首次引导、Pocket/赞助推荐、遥测和远程实验入口；Gecko
+  继续作为 MPL 开源网页引擎，产品界面统一为 KEMI。
+- 单双屏一致性：`1f383d3` 让单屏模式使用 KEMI 自有 Activity 和主页，并把开发补丁 0021–0024 合并为
+  可重放的 0025；当前唯一补丁入口为 0001–0020 + 0025–0029。
+- 车机工具栏：`22e870b`、`4aea5af` 放大导航点击区域并拆分“前进/打开”语义，当前布局为
+  `后退 / 前进 / 刷新 | 地址栏 | 打开 / 主页 / 退出`。
+- 默认导航：`99e96b9`、`54572fe` 让空地址、`about:blank` 和内部主页残留统一进入 KEMI 知识库；63
+  单屏真机已验证地址和页面实际变化，日志无浏览器崩溃。
+- 正式发布：`c8f88f7`–`708bb2b` 建立本地正式发布脚本、外置密钥目录和统一证书闭环。正式 1.2.0
+  完成 4215 个任务并通过 APK v2/v3 验签，APK SHA-256 为
+  `6f2ff012c5f4cf52061ea04242da3098d765fed889043e323fe3ab2d60c505ef`。
+- GitHub 备份边界：源码、补丁、构建脚本、README、CHANGELOG 和 docs 提交到 `main`；`bin/`、真机证据、
+  工具链以及 `/Users/kemi/coding/priv/pem` 签名私钥不上传。`browser` 显示为 `m` 是本机补丁展开状态，
+  不代表需要提交子模块指针。
