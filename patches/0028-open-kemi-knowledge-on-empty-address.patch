@@ -1,0 +1,22 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index c796805..ea60212 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -355,7 +355,7 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     private fun normalizeInput(raw: String): String {
+         val input = raw.trim()
+-        if (input.isEmpty()) return HOME_URL
++        if (input.isEmpty()) return KEMI_KNOWLEDGE_URL
+         if (input.contains(' ') || (!input.contains('.') && !input.contains("://"))) {
+             return "https://www.baidu.com/s?wd=" + java.net.URLEncoder.encode(input, "UTF-8")
+         }
+@@ -669,6 +669,7 @@ open class DualScreenBrowserActivity : Activity() {
+     companion object {
+         const val EXTRA_URL = "url"
+         const val HOME_URL = "resource://android/assets/dual_screen_home.html"
++        const val KEMI_KNOWLEDGE_URL = "https://kemi.newlinksz.com/kd/"
+         const val DEFAULT_URL = HOME_URL
+         const val TARGET_TOP_DISPLAY_ID = 2
+         const val TARGET_WIDTH_PX = 1920
+
