@@ -1,0 +1,37 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index ea60212..f2ba3ff 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -347,15 +347,20 @@ open class DualScreenBrowserActivity : Activity() {
+     }
+ 
+     private fun updateAddress(url: String) {
+-        if (!isTopDisplay || url == HOME_URL) return
++        if (!isTopDisplay) return
+         addressField?.let { field ->
+-            if (!field.hasFocus() && field.text.toString() != url) field.setText(url)
++            if (!field.hasFocus()) {
++                val visibleUrl = if (url == HOME_URL || url == ABOUT_BLANK_URL) "" else url
++                if (field.text.toString() != visibleUrl) field.setText(visibleUrl)
++            }
+         }
+     }
+ 
+     private fun normalizeInput(raw: String): String {
+         val input = raw.trim()
+-        if (input.isEmpty()) return KEMI_KNOWLEDGE_URL
++        if (input.isEmpty() || input == ABOUT_BLANK_URL || input == HOME_URL) {
++            return KEMI_KNOWLEDGE_URL
++        }
+         if (input.contains(' ') || (!input.contains('.') && !input.contains("://"))) {
+             return "https://www.baidu.com/s?wd=" + java.net.URLEncoder.encode(input, "UTF-8")
+         }
+@@ -669,6 +674,7 @@ open class DualScreenBrowserActivity : Activity() {
+     companion object {
+         const val EXTRA_URL = "url"
+         const val HOME_URL = "resource://android/assets/dual_screen_home.html"
++        const val ABOUT_BLANK_URL = "about:blank"
+         const val KEMI_KNOWLEDGE_URL = "https://kemi.newlinksz.com/kd/"
+         const val DEFAULT_URL = HOME_URL
+         const val TARGET_TOP_DISPLAY_ID = 2
+

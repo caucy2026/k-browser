@@ -24,3 +24,4 @@ patches/0025-consolidate-clean-browser-and-single-screen-copy.patch
 patches/0026-redesign-large-balanced-navigation-controls.patch
 patches/0027-separate-history-and-address-actions.patch
 patches/0028-open-kemi-knowledge-on-empty-address.patch
+patches/0029-clear-internal-blank-address-before-kemi-open.patch
