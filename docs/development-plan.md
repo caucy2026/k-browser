@@ -114,7 +114,7 @@ D0 返回或按 HOME 后两个 Activity 都必须消失。
 
 工作：
 
-- 默认桌面图标必须直接启动双屏 Activity，不能依赖 ADB 或专用 URI。
+- 默认桌面图标必须进入双屏路由 Activity，不能依赖 ADB 或专用 URI；路由最终建立 D0 总控和 D2 顶部。
 - 主 Activity 固定 Display 0。
 - 副屏 Activity 通过 `setLaunchDisplayId(2)` 启动。
 - 副屏使用 `singleInstance`，两屏进入沉浸全屏。
@@ -135,7 +135,8 @@ D0 返回或按 HOME 后两个 Activity 都必须消失。
 adb shell monkey -p io.github.forkmaintainers.iceraven -c android.intent.category.LAUNCHER 1
 ```
 
-通过条件：解析出的 launcher 目标为 `DualScreenBrowserActivity`，Display 0/2 各有一个实例。
+通过条件：解析出的 launcher 目标为 `DualScreenLaunchActivity`；无论从 D0 或 D2 点击，最终
+Display 0 为 `DualScreenBrowserActivity`、Display 2 为 `DualScreenTopActivity`。
 
 ### M4：双页面同步原型
 

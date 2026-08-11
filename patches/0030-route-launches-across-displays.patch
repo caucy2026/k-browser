@@ -1,0 +1,158 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 4f67e98..bb7b354 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -88,7 +88,8 @@
+         <activity-alias
+             android:name="${applicationId}.App"
+             android:exported="true"
+-            android:targetActivity=".dualscreen.DualScreenBrowserActivity">
++            android:taskAffinity="${applicationId}.dualscreen.launcher"
++            android:targetActivity=".dualscreen.DualScreenLaunchActivity">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+ 
+@@ -503,6 +504,16 @@
+             >
+         </activity>
+ 
++        <activity
++            android:name=".dualscreen.DualScreenLaunchActivity"
++            android:excludeFromRecents="true"
++            android:exported="false"
++            android:launchMode="singleTask"
++            android:noHistory="true"
++            android:screenOrientation="landscape"
++            android:taskAffinity="${applicationId}.dualscreen.launcher"
++            android:theme="@style/Theme.Transparent" />
++
+         <activity
+             android:name=".dualscreen.DualScreenBrowserActivity"
+             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index f2ba3ff..4b925bb 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -96,6 +96,7 @@ open class DualScreenBrowserActivity : Activity() {
+     private var lastMouseY = TARGET_VIEWPORT_HEIGHT_PX / 2f
+     private var lastMouseEventAt = Long.MIN_VALUE
+     private var pendingMouseSelection: String? = null
++    private var launchingPeerDisplay = false
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+@@ -418,7 +419,10 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     override fun onUserLeaveHint() {
+         super.onUserLeaveHint()
+-        DualScreenCoordinator.exitAll()
++        // Starting the paired Activity on the other display is an internal task transition, not
++        // a user exit. Some vehicle ROMs emit onUserLeaveHint for it; exiting here would tear down
++        // the just-created pair and look like a launch crash.
++        if (!launchingPeerDisplay) DualScreenCoordinator.exitAll()
+     }
+ 
+     internal fun finishFromPair() {
+@@ -551,7 +555,8 @@ open class DualScreenBrowserActivity : Activity() {
+     }
+ 
+     private fun hasRecentMouseActivity(): Boolean =
+-        SystemClock.uptimeMillis() - lastMouseEventAt <= MOUSE_BACK_GRACE_PERIOD_MS
++        lastMouseEventAt != Long.MIN_VALUE &&
++            SystemClock.uptimeMillis() - lastMouseEventAt <= MOUSE_BACK_GRACE_PERIOD_MS
+ 
+     private fun copyText(label: String, value: String) {
+         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+@@ -621,7 +626,9 @@ open class DualScreenBrowserActivity : Activity() {
+         val options = ActivityOptions.makeBasic().apply {
+             launchDisplayId = secondary.displayId
+         }
++        launchingPeerDisplay = true
+         startActivity(launchIntent, options.toBundle())
++        window.decorView.postDelayed({ launchingPeerDisplay = false }, PEER_LAUNCH_GRACE_MS)
+     }
+ 
+     private fun redirectControllerToDisplay0() {
+@@ -683,6 +690,7 @@ open class DualScreenBrowserActivity : Activity() {
+         const val TARGET_CANVAS_HEIGHT_PX = 2560
+         const val TARGET_REFRESH_RATE = 60f
+         const val MOUSE_BACK_GRACE_PERIOD_MS = 3_000L
++        const val PEER_LAUNCH_GRACE_MS = 750L
+     }
+ }
+ 
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenLaunchActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenLaunchActivity.kt
+new file mode 100644
+index 0000000..101386b
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenLaunchActivity.kt
+@@ -0,0 +1,69 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++package org.mozilla.fenix.dualscreen
++
++import android.app.Activity
++import android.app.ActivityOptions
++import android.content.Intent
++import android.content.pm.ActivityInfo
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.util.Log
++import android.view.Display
++
++/**
++ * Launcher-only trampoline for the dual-screen browser.
++ *
++ * The target vehicle ROM binds a launcher task to the display where the icon was clicked. Moving
++ * that same task from Display 2 to Display 0 makes WindowManager reject the windows and both
++ * activities disappear. Keep the launcher in a separate task, remove it first, and only then
++ * create the controller task on Display 0 from the application context.
++ */
++class DualScreenLaunchActivity : Activity() {
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
++
++        val originDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
++        val appContext = applicationContext
++        val controllerIntent = Intent(intent).apply {
++            setClass(appContext, DualScreenBrowserActivity::class.java)
++            addFlags(
++                Intent.FLAG_ACTIVITY_NEW_TASK or
++                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
++                    Intent.FLAG_ACTIVITY_NO_USER_ACTION,
++            )
++        }
++        val controllerOptions = ActivityOptions.makeBasic().apply {
++            launchDisplayId = Display.DEFAULT_DISPLAY
++        }.toBundle()
++
++        Log.i(TAG, "Route dual-screen launch from display $originDisplayId to display 0")
++        if (originDisplayId == Display.DEFAULT_DISPLAY) {
++            appContext.startActivity(controllerIntent, controllerOptions)
++            finishAndRemoveTask()
++            return
++        }
++
++        // Let WindowManager fully detach the launcher task from Display 2 before creating the
++        // controller task. A separate task affinity plus this short delay avoids the OEM ROM's
++        // cross-display task-affinity race.
++        finishAndRemoveTask()
++        MAIN_HANDLER.postDelayed(
++            {
++                Log.i(TAG, "Start dual-screen controller on display 0")
++                appContext.startActivity(controllerIntent, controllerOptions)
++            },
++            SECONDARY_DISPLAY_RELEASE_DELAY_MS,
++        )
++    }
++
++    private companion object {
++        const val TAG = "KBrowserLaunch"
++        const val SECONDARY_DISPLAY_RELEASE_DELAY_MS = 400L
++        val MAIN_HANDLER = Handler(Looper.getMainLooper())
++    }
++}

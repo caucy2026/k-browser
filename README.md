@@ -13,8 +13,9 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
   显示顶部，Display 0 显示紧接其后的底部，不是两个网页互相复制。
 - 任意屏返回、退出或离开都会同步结束另一屏；默认双屏，长按图标可进入单屏模式。
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
-- 当前可复现补丁入口为 0001–0020 + 0025–0029，最新本地候选版本为 `1.2.0-rc23`。
-- 当前正式签名版本为 `1.2.0`，产物为 `bin/DualScreenBrowser-v1.2.0-arm64-release.apk`。
+- 当前可复现补丁入口为 0001–0020 + 0025–0030。
+- 当前正式签名版本为 `1.2.1`，产物为 `bin/DualScreenBrowser-v1.2.1-arm64-release.apk`；
+  已在 63 验证从任意屏启动双屏/单屏以及任意屏返回联动退出。
 - KEMI 构建不显示 Firefox/Iceraven 注册、首次引导、Pocket/赞助内容或默认浏览器推广；
   Gecko 仅作为开源网页引擎保留。
 
@@ -34,7 +35,7 @@ KBROWSER_VERSION_NAME=1.2.0-local ./scripts/build-local.sh
 正式发布使用机器外置私钥目录，不把私钥提交到 Git：
 
 ```sh
-./scripts/build-release.sh 1.2.0
+./scripts/build-release.sh 1.2.1
 ```
 
 唯一的 KEMI Android 正式签名资产保存在 `/Users/kemi/coding/priv/pem/kemi-unified-release`，该目录可以
@@ -69,7 +70,7 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 构建会自动为未签名 APK 生成本机测试证书；正式发布必须改用离线保存的正式证书。
 已准备过的源码再次执行 `prepare-source.sh` 会安全跳过，不会重复打补丁。
 
-2026-08-11 已验证 0001–0020 + 0025–0029 能在固定的干净上游提交上按序完整重放；随后本地完成
+2026-08-11 已验证 0001–0020 + 0025–0030 能在固定的干净上游提交上按序完整重放；随后本地完成
 4215 个 Gradle 任务、R8、资源优化、APK 打包以及 v2/v3 签名校验。首次无增量构建
 约需 9 分钟，增量构建通常更快，实际时间取决于网络与机器性能。
 
@@ -92,6 +93,8 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 
 完整开发流程见 [docs/development-plan.md](docs/development-plan.md)。
 目标设备的固定参数与性能约束见 [docs/hardware-profile.md](docs/hardware-profile.md)。
+双屏/单屏实现、跨屏启动路由及最终验收见
+[docs/dual-single-screen-architecture.md](docs/dual-single-screen-architecture.md)。
 版本与全部定制内容见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## CI 架构

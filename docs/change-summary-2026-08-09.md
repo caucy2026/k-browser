@@ -227,11 +227,11 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 ## 10. 当前备份点
 
 - 源码以 `main` 最新提交为准，补丁序列可在固定上游提交上完整重放。
-- 正式 APK：`bin/DualScreenBrowser-v1.2.0-arm64-release.apk`，SHA-256 为
-  `6f2ff012c5f4cf52061ea04242da3098d765fed889043e323fe3ab2d60c505ef`；通用路径
+- 正式 APK：`bin/DualScreenBrowser-v1.2.1-arm64-release.apk`，SHA-256 为
+  `d4d88472c2d1155dad63d6263afe1229ba81ee038988d34f0fb2221b59484f5c`；通用路径
   `bin/KBrowser-arm64.apk` 指向同一构建内容。
 - `browser` 子模块工作树保持补丁展开状态；唯一可复现来源是固定上游提交和
-  `patches/series` 的 0001–0020 + 0025–0029 顺序，不直接提交展开后的子模块指针。
+  `patches/series` 的 0001–0020 + 0025–0030 顺序，不直接提交展开后的子模块指针。
 - 完整 Git bundle 存放在忽略目录 `artifacts/git-backups/`，生成后必须执行
   `git bundle verify`。
 
@@ -340,14 +340,35 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 - 干净开源界面：`7486186` 移除上游账户注册、首次引导、Pocket/赞助推荐、遥测和远程实验入口；Gecko
   继续作为 MPL 开源网页引擎，产品界面统一为 KEMI。
 - 单双屏一致性：`1f383d3` 让单屏模式使用 KEMI 自有 Activity 和主页，并把开发补丁 0021–0024 合并为
-  可重放的 0025；当前唯一补丁入口为 0001–0020 + 0025–0029。
+  可重放的 0025；1.2.1 再增加跨屏安全启动补丁 0030，当前唯一补丁入口为 0001–0020 + 0025–0030。
 - 车机工具栏：`22e870b`、`4aea5af` 放大导航点击区域并拆分“前进/打开”语义，当前布局为
   `后退 / 前进 / 刷新 | 地址栏 | 打开 / 主页 / 退出`。
 - 默认导航：`99e96b9`、`54572fe` 让空地址、`about:blank` 和内部主页残留统一进入 KEMI 知识库；63
   单屏真机已验证地址和页面实际变化，日志无浏览器崩溃。
-- 正式发布：`c8f88f7`–`708bb2b` 建立本地正式发布脚本、外置密钥目录和统一证书闭环。正式 1.2.0
+- 正式发布：`c8f88f7`–`708bb2b` 建立本地正式发布脚本、外置密钥目录和统一证书闭环。正式 1.2.1
   完成 4215 个任务并通过 APK v2/v3 验签，APK SHA-256 为
-  `6f2ff012c5f4cf52061ea04242da3098d765fed889043e323fe3ab2d60c505ef`。
+  `d4d88472c2d1155dad63d6263afe1229ba81ee038988d34f0fb2221b59484f5c`。
 - GitHub 备份边界：源码、补丁、构建脚本、README、CHANGELOG 和 docs 提交到 `main`；`bin/`、真机证据、
   工具链以及 `/Users/kemi/coding/priv/pem` 签名私钥不上传。`browser` 显示为 `m` 是本机补丁展开状态，
   不代表需要提交子模块指针。
+
+## 12. 1.2.1 跨屏启动与最终验收（2026-08-11）
+
+- 副屏启动看似闪退并非 Java 崩溃。车机 ROM 会把 LAUNCHER 任务绑定到发起显示，旧实现再把同一
+  `DualScreenBrowserActivity` 任务从 D2 搬到 D0，WindowManager 报告窗口属于错误显示并隐藏任务。
+- 新增 `DualScreenLaunchActivity` 作为无 Gecko 的轻量路由入口，并使用独立 task affinity。从 D2
+  启动时先移除路由任务，等待 400ms 释放显示归属，再从 Application Context 在 D0 创建总控；总控随后
+  正常创建 D2 顶部 Activity。从 D0 启动时直接进入同一总控流程。
+- 双屏内部创建配对 Activity 的 750ms 窗口内忽略 `onUserLeaveHint`，避免 ROM 把内部跨屏任务切换误判
+  为用户退出；真正返回、工具栏退出或离开仍通过 `DualScreenCoordinator.exitAll()` 同时结束两屏。
+- 修复首次系统返回误进鼠标菜单：旧的 `Long.MIN_VALUE` 初始时间参与减法会溢出，导致“近期鼠标活动”
+  恒为真；现在先确认时间戳已初始化，再计算 3 秒保护窗口。
+- 改动已整理为 `0030-route-launches-across-displays.patch`，并在固定上游 + 0001–0020 + 0025–0029
+  的干净临时副本上通过 `git apply --check`、实际应用和逐文件一致性比较。
+- 本机正式 `1.2.1` 构建完成 4215 个 Gradle 任务、R8、资源优化和 APK v2/v3 验签。APK：
+  `bin/DualScreenBrowser-v1.2.1-arm64-release.apk`；SHA-256：
+  `d4d88472c2d1155dad63d6263afe1229ba81ee038988d34f0fb2221b59484f5c`。
+- 63 真机最终通过 D0/D2 双屏启动、D0/D2 单屏启动、W3C 长页面两屏分别滚动、D0/D2 系统返回同步
+  退出；日志显示双屏收到 `1920×2560` 首帧、单屏收到 `1920×1280` 首帧，未发现浏览器
+  `FATAL EXCEPTION`。
+- 双屏/单屏完整技术说明与验收矩阵已独立整理到 `docs/dual-single-screen-architecture.md`。

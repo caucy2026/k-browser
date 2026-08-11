@@ -3,6 +3,21 @@
 本文记录 KEMI 双屏浏览器相对固定 Iceraven/Fenix 上游的定制内容。可复现源码以
 `build/upstream.env` 指定的上游提交和 `patches/series` 的顺序为准。
 
+## 1.2.1 正式版（2026-08-11）
+
+- 修复从 Display 2 点击普通图标后看似闪退：新增独立 `DualScreenLaunchActivity`，先移除副屏
+  launcher 任务，再延迟从 Application Context 在 Display 0 创建双屏总控，避开车机 ROM 的跨屏
+  task/window 归属竞态。
+- 双屏内部创建 D2 配对 Activity 时短暂屏蔽 `onUserLeaveHint`，内部任务切换不再误触发统一退出。
+- 修复首次系统返回被误判为近期鼠标右键：验证鼠标时间戳已初始化后才计算时间差，避免
+  `Long.MIN_VALUE` 算术溢出。
+- 63 真机完成 D0/D2 双屏启动、D0/D2 单屏启动、W3C 长页两屏分别滚动、D0/D2 返回同步退出；
+  均未发现浏览器 `FATAL EXCEPTION`。
+- 可复现补丁新增 `0030-route-launches-across-displays.patch`；完整设计和验收记录见
+  `docs/dual-single-screen-architecture.md`。
+- 正式 APK：`bin/DualScreenBrowser-v1.2.1-arm64-release.apk`，SHA-256：
+  `d4d88472c2d1155dad63d6263afe1229ba81ee038988d34f0fb2221b59484f5c`。
+
 ## 1.2.0 正式版（2026-08-11）
 
 当前正式基线，APK 位于本地忽略目录 `bin/`，不提交到 GitHub。
@@ -103,6 +118,7 @@
 | 0027 | 分离历史“前进”和地址“打开”操作，重排主页与退出 |
 | 0028 | 空地址默认打开 KEMI 知识库 |
 | 0029 | 清理 Gecko `about:blank`/内部主页残留后再执行默认知识库导航 |
+| 0030 | 从任意显示安全路由双屏启动，并修复内部切屏/首次返回误退出逻辑 |
 
 ## 仓库备份规则
 
