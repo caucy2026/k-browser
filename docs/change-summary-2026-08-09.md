@@ -316,16 +316,15 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
 
 ### KEMI 正式发布签名（2026-08-11）
 
-- 正式私钥生成在 `/Users/kemi/coding/priv/kbrowser-release.jks`，别名为 `kbrowser-release`，算法为
-  RSA 4096 / SHA256withRSA，有效期 10000 天；随机密码配置保存在私有目录根级，公开 PEM 证书和
-  多 APK 共用签名手册统一整理到 `/Users/kemi/coding/priv/pem`。
+- 用户决定废弃并删除此前两套证书，重新生成唯一完整的 KEMI Android 统一正式证书。JKS、随机密码配置、PEM、
+  指纹和详细手册集中在 `/Users/kemi/coding/priv/pem/kemi-unified-release`，该目录可整体独立加密备份或迁移。
 - 私有目录权限为 700，JKS、密码配置和证书权限为 600。私钥和密码不进入任何应用 Git 仓库。
-- 正式证书 SHA-256 指纹为
-  `33:20:07:ED:D3:C2:07:82:2C:E8:D9:77:05:4F:3A:7E:69:8F:49:18:91:BD:EF:2A:10:46:E8:66:CD:83:8A:5C`。
-- `scripts/build-release.sh` 默认从 `/Users/kemi/coding/priv` 读取正式签名（证书位于 `pem` 子目录），也支持通过
-  `KBROWSER_PRIVATE_DIR` 选择其他安全目录；日常 `build-local.sh` 仍保留测试签名，避免误用生产私钥。
+- 统一正式证书 SHA-256 指纹为
+  `C3:09:13:B0:C3:5B:84:50:F6:49:61:F5:B3:C7:6C:E8:30:4A:F0:76:0C:59:1E:40:BC:45:82:59:8C:38:8D:04`。
+- `scripts/build-release.sh` 默认只读取 `pem/kemi-unified-release`；缺少任何关键文件时立即失败。只有迁移完整
+  备份时才通过 `KBROWSER_RELEASE_SIGNING_DIR` 指定其他目录。
 - `1.2.0` 正式构建 4215 个任务通过，APK v2/v3 签名验证通过；签名者 DN 和证书 SHA-256 均与
-  `/Users/kemi/coding/priv` 的正式证书一致。正式 APK SHA-256 为
-  `7fadde538a217ecb919d298c45c7268357b2265ccfeedb517af653ef15948cdf`。
+  `/Users/kemi/coding/priv/pem/kemi-unified-release` 的正式证书一致。正式 APK SHA-256 为
+  `6f2ff012c5f4cf52061ea04242da3098d765fed889043e323fe3ab2d60c505ef`。
 - `bin/KBrowser-arm64.apk` 已更新为正式签名包，并另存为
   `bin/DualScreenBrowser-v1.2.0-arm64-release.apk`；对应 `.sha256` 和 `.manifest.txt` 同步生成。

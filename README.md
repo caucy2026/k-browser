@@ -37,9 +37,9 @@ KBROWSER_VERSION_NAME=1.2.0-local ./scripts/build-local.sh
 ./scripts/build-release.sh 1.2.0
 ```
 
-默认读取 `/Users/kemi/coding/priv/kbrowser-release.jks`、`release-signing.properties` 和
-`pem/kbrowser-release-cert.pem`；完整的多 APK 共用签名说明保存在
-`/Users/kemi/coding/priv/pem/README-APK正式签名.md`。可通过 `KBROWSER_PRIVATE_DIR` 改用其他安全目录。
+唯一的 KEMI Android 正式签名资产保存在 `/Users/kemi/coding/priv/pem/kemi-unified-release`，该目录可以
+整体独立加密备份或迁移。完整说明保存在 `pem/README-APK正式签名.md`。可通过
+`KBROWSER_RELEASE_SIGNING_DIR` 显式指定该完整签名目录的备份副本。
 
 `prepare-source.sh` 会完成以下闭环：
 

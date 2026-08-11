@@ -5,9 +5,10 @@ set -eu
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSION_NAME=${1:-1.0.0}
 PRIVATE_DIR=${KBROWSER_PRIVATE_DIR:-/Users/kemi/coding/priv}
-KEYSTORE_PATH=${KBROWSER_RELEASE_KEYSTORE_PATH:-"$PRIVATE_DIR/kbrowser-release.jks"}
-SIGNING_PROPERTIES=${KBROWSER_RELEASE_SIGNING_PROPERTIES:-"$PRIVATE_DIR/release-signing.properties"}
-RELEASE_CERT=${KBROWSER_RELEASE_CERT_PATH:-"$PRIVATE_DIR/pem/kbrowser-release-cert.pem"}
+SIGNING_DIR=${KBROWSER_RELEASE_SIGNING_DIR:-"$PRIVATE_DIR/pem/kemi-unified-release"}
+KEYSTORE_PATH=${KBROWSER_RELEASE_KEYSTORE_PATH:-"$SIGNING_DIR/kemi-unified-release.jks"}
+SIGNING_PROPERTIES=${KBROWSER_RELEASE_SIGNING_PROPERTIES:-"$SIGNING_DIR/release-signing.properties"}
+RELEASE_CERT=${KBROWSER_RELEASE_CERT_PATH:-"$SIGNING_DIR/kemi-unified-release-cert.pem"}
 
 [ -f "$KEYSTORE_PATH" ] || {
   echo "FAIL: release keystore not found: $KEYSTORE_PATH" >&2
