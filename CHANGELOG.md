@@ -3,6 +3,18 @@
 本文记录 KEMI 双屏浏览器相对固定 Iceraven/Fenix 上游的定制内容。可复现源码以
 `build/upstream.env` 指定的上游提交和 `patches/series` 的顺序为准。
 
+## 未发布：网页语音播报（2026-08-15）
+
+- D2 和单屏工具栏新增“朗读/暂停/继续”，并提供独立停止浮层；双屏仍只创建一个进程级播放器，
+  不会因两个 Activity 产生重复播报。
+- 内置特权 WebExtension 从当前可见语义块开始提取正文，按自然标点分段、预取下一段，并高亮及平滑跟随当前段。
+- 优先读取系统 `Settings.Global["iflytek_params"]` 中预置的讯飞参数，绝不硬编码或输出凭据；云端不可用时
+  降级 Android `TextToSpeech`。暂停使用“停流并重建当前段”，规避目标固件 AudioTrack 假恢复。
+- 页面跳转、主页、返回、双屏统一退出和会话销毁均停止播放；generation 屏障丢弃迟到的网络/音频回调。
+- 62 真机 W3C 页面提取 4022 字、分为 50 段，首个 PCM 361ms；验证下一段预取、高亮跟随、暂停续播、
+  手动停止和换页停止。内部主页提取 189 字，首个 PCM 355ms。未发现浏览器 `FATAL EXCEPTION`。
+- 可复现补丁新增 `0031-add-webpage-read-aloud.patch`，完整说明见 `docs/webpage-read-aloud.md`。
+
 ## 1.2.1 正式版（2026-08-11）
 
 - 修复从 Display 2 点击普通图标后看似闪退：新增独立 `DualScreenLaunchActivity`，先移除副屏

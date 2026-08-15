@@ -12,8 +12,10 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 - 双屏模式只使用一个 GeckoSession 和一张 `1920 x 2560` Gecko 合成帧：Display 2
   显示顶部，Display 0 显示紧接其后的底部，不是两个网页互相复制。
 - 任意屏返回、退出或离开都会同步结束另一屏；默认双屏，长按图标可进入单屏模式。
+- D2/单屏工具栏提供网页朗读：从当前可见正文开始、当前段高亮跟随、下一段预取，支持暂停、继续和停止；
+  换页或退出会立即停止语音。
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
-- 当前可复现补丁入口为 0001–0020 + 0025–0030。
+- 当前可复现补丁入口为 0001–0020 + 0025–0031。
 - 当前正式签名版本为 `1.2.1`，产物为 `bin/DualScreenBrowser-v1.2.1-arm64-release.apk`；
   已在 63 验证从任意屏启动双屏/单屏以及任意屏返回联动退出。
 - KEMI 构建不显示 Firefox/Iceraven 注册、首次引导、Pocket/赞助内容或默认浏览器推广；
@@ -97,6 +99,8 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 [docs/dual-single-screen-architecture.md](docs/dual-single-screen-architecture.md)。
 供其他项目复用的方案选择、底层细节、失败案例和踩坑清单见
 [docs/multi-display-browser-lessons.md](docs/multi-display-browser-lessons.md)。
+网页正文提取、讯飞流式 TTS、系统降级、状态机和真机闭环见
+[docs/webpage-read-aloud.md](docs/webpage-read-aloud.md)。
 版本与全部定制内容见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## CI 架构

@@ -1,0 +1,1676 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index b492b822a60d534f1a5a97e9b2b06452e604da54..6f3261bbcab97e1c3398473f30d2b47a1fc525e3 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -651,6 +651,8 @@ dependencies {
+     implementation libs.sentry
+     implementation libs.androidx.documentfile
+     implementation libs.zxing
++    // Streaming cloud TTS using credentials provisioned by the vehicle system.
++    implementation libs.okhttp
+ 
+     implementation libs.androidx.room.runtime
+     ksp libs.androidx.room.compiler
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index bb7b3544c479042d67bcdc559560569db1282c38..645e0ef0b700f1da88c35c5849c4e4ae1fc3d464 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -6,6 +6,12 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:tools="http://schemas.android.com/tools">
+ 
++    <queries>
++        <intent>
++            <action android:name="android.intent.action.TTS_SERVICE" />
++        </intent>
++    </queries>
++
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+ 
+diff --git a/app/src/main/assets/kbrowser_tts/content.js b/app/src/main/assets/kbrowser_tts/content.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..7831b5b10c455aa9c28a1d313aa423791a776f6a
+--- /dev/null
++++ b/app/src/main/assets/kbrowser_tts/content.js
+@@ -0,0 +1,113 @@
++(function () {
++  "use strict";
++
++  const MAX_TEXT_CHARS = 500000;
++  const BLOCK_SELECTOR = [
++    "h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote",
++    "pre", "td", "th", "figcaption", "article", "main"
++  ].join(",");
++  let highlighted = null;
++
++  function normalize(value) {
++    return (value || "").replace(/\s+/g, " ").trim();
++  }
++
++  function isReadable(element) {
++    if (!element || !element.isConnected) return false;
++    if (element.closest("script,style,noscript,template,[aria-hidden='true']")) return false;
++    const style = window.getComputedStyle(element);
++    return style.display !== "none" && style.visibility !== "hidden" &&
++      Number(style.opacity || "1") !== 0;
++  }
++
++  function collectBlocks() {
++    const candidates = Array.from(document.querySelectorAll(BLOCK_SELECTOR));
++    const blocks = [];
++    const seen = new Set();
++    for (const element of candidates) {
++      if (!isReadable(element)) continue;
++      // Skip broad article/main containers when they contain smaller semantic blocks.
++      if ((element.matches("article,main")) && element.querySelector(BLOCK_SELECTOR)) continue;
++      const text = normalize(element.innerText || element.textContent);
++      if (!text || seen.has(text)) continue;
++      const rect = element.getBoundingClientRect();
++      if (rect.width <= 0 || rect.height <= 0) continue;
++      seen.add(text);
++      blocks.push({ element, text, top: rect.top, bottom: rect.bottom });
++    }
++    if (blocks.length === 0 && isReadable(document.body)) {
++      const text = normalize(document.body.innerText || document.body.textContent);
++      if (text) blocks.push({ element: document.body, text, top: 0, bottom: 1 });
++    }
++    return blocks;
++  }
++
++  function extractFromViewport() {
++    const blocks = collectBlocks();
++    let start = blocks.findIndex(block => block.bottom >= 0);
++    if (start < 0) start = 0;
++    let result = "";
++    for (let index = start; index < blocks.length; index++) {
++      const next = blocks[index].text;
++      if (!next) continue;
++      if (result.length + next.length + 1 > MAX_TEXT_CHARS) {
++        result += "\n" + next.slice(0, Math.max(0, MAX_TEXT_CHARS - result.length - 1));
++        break;
++      }
++      result += (result ? "\n" : "") + next;
++    }
++    return result;
++  }
++
++  function clearHighlight() {
++    if (!highlighted) return;
++    highlighted.style.removeProperty("background-color");
++    highlighted.style.removeProperty("box-shadow");
++    highlighted.style.removeProperty("scroll-margin-top");
++    highlighted = null;
++  }
++
++  function follow(text) {
++    clearHighlight();
++    const needle = normalize(text).slice(0, 36);
++    if (!needle) return;
++    const blocks = collectBlocks();
++    const target = blocks.find(block => block.text.includes(needle)) ||
++      blocks.find(block => needle.includes(block.text.slice(0, 24)));
++    if (!target) return;
++    highlighted = target.element;
++    highlighted.style.setProperty("background-color", "#EAF2FF", "important");
++    highlighted.style.setProperty("box-shadow", "inset 4px 0 #1F69E0", "important");
++    highlighted.style.setProperty("scroll-margin-top", "180px", "important");
++    const rect = highlighted.getBoundingClientRect();
++    if (rect.top < 120 || rect.bottom > window.innerHeight - 100) {
++      highlighted.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
++    }
++  }
++
++  function connect() {
++    let port;
++    try {
++      port = browser.runtime.connectNative("kbrowser_tts");
++    } catch (_) {
++      return;
++    }
++    port.onMessage.addListener(message => {
++      if (!message || !message.type) return;
++      if (message.type === "extract") {
++        port.postMessage({
++          type: "pageText",
++          requestId: message.requestId,
++          text: extractFromViewport()
++        });
++      } else if (message.type === "follow") {
++        follow(message.text || "");
++      } else if (message.type === "clear") {
++        clearHighlight();
++      }
++    });
++    port.onDisconnect.addListener(() => window.setTimeout(connect, 500));
++  }
++
++  connect();
++})();
+diff --git a/app/src/main/assets/kbrowser_tts/manifest.json b/app/src/main/assets/kbrowser_tts/manifest.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..25ee5c4ac3cdca84b2bc56047a1c6118056c2774
+--- /dev/null
++++ b/app/src/main/assets/kbrowser_tts/manifest.json
+@@ -0,0 +1,25 @@
++{
++  "manifest_version": 2,
++  "name": "KEMI Browser Read Aloud Bridge",
++  "version": "1.0",
++  "description": "Extracts visible web text for the native KEMI read-aloud controller.",
++  "browser_specific_settings": {
++    "gecko": {
++      "id": "kbrowser-tts@kemi.local"
++    }
++  },
++  "permissions": [
++    "nativeMessaging",
++    "nativeMessagingFromContent",
++    "geckoViewAddons",
++    "<all_urls>"
++  ],
++  "content_scripts": [
++    {
++      "matches": ["<all_urls>"],
++      "js": ["content.js"],
++      "run_at": "document_idle",
++      "all_frames": false
++    }
++  ]
++}
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserReadAloudController.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserReadAloudController.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..e7890cc3580351200708fb1a0dc22e0db8ce3113
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserReadAloudController.kt
+@@ -0,0 +1,402 @@
++package org.mozilla.fenix.dualscreen
++
++import android.content.Context
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.speech.tts.TextToSpeech
++import android.speech.tts.UtteranceProgressListener
++import android.util.Log
++import java.text.Normalizer
++import java.util.Locale
++
++internal enum class BrowserTtsState {
++    IDLE,
++    LOADING,
++    SPEAKING,
++    PAUSED,
++}
++
++internal data class BrowserTtsUiState(
++    val state: BrowserTtsState,
++    val message: String,
++    val index: Int = 0,
++    val total: Int = 0,
++)
++
++/**
++ * Process-wide read-aloud state machine for the one shared GeckoSession.
++ *
++ * It intentionally owns both cloud engines and the Android fallback so the two
++ * display Activities can never create two competing players.
++ */
++internal class BrowserReadAloudController(
++    context: Context,
++    private val requestPageText: (Int) -> Unit,
++    private val followChunk: (String) -> Unit,
++    private val clearHighlight: () -> Unit,
++    private val onUiState: (BrowserTtsUiState) -> Unit,
++) {
++    private val appContext = context.applicationContext
++    private val mainHandler = Handler(Looper.getMainLooper())
++    private val iflytek = IflytekTtsEngine(appContext)
++    private val prefetcher = IflytekTtsEngine(appContext)
++    private val chunks = mutableListOf<String>()
++
++    private var localTts: TextToSpeech? = null
++    private var localReady = false
++    private var state = BrowserTtsState.IDLE
++    private var generation = 0
++    private var chunkIndex = 0
++    private var usingIflytek = false
++    private var prefetchedClip: IflytekTtsEngine.PcmClip? = null
++    private var prefetchIndex = -1
++    private var prefetching = false
++    private var waitingForPrefetch = false
++    private var lastUiState = BrowserTtsUiState(BrowserTtsState.IDLE, "朗读")
++
++    init {
++        localTts = TextToSpeech(appContext) { result ->
++            mainHandler.post {
++                localReady = result == TextToSpeech.SUCCESS
++                if (localReady) {
++                    val engine = localTts ?: return@post
++                    val languageResult = engine.setLanguage(Locale.SIMPLIFIED_CHINESE)
++                    if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
++                        languageResult == TextToSpeech.LANG_NOT_SUPPORTED
++                    ) {
++                        engine.language = Locale.getDefault()
++                    }
++                    engine.setSpeechRate(1.0f)
++                    engine.setPitch(1.0f)
++                    engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
++                        override fun onStart(utteranceId: String?) = Unit
++
++                        override fun onDone(utteranceId: String?) {
++                            val token = utteranceId?.substringAfter("kbrowser-")
++                                ?.substringBefore('-')?.toIntOrNull() ?: return
++                            mainHandler.post { advance(token) }
++                        }
++
++                        @Deprecated("Deprecated in Java")
++                        override fun onError(utteranceId: String?) {
++                            mainHandler.post { fail("系统朗读失败") }
++                        }
++                    })
++                }
++                Log.i(TAG, "TTS_LOCAL_READY ready=$localReady")
++            }
++        }
++    }
++
++    fun toggle() {
++        when (state) {
++            BrowserTtsState.IDLE -> start()
++            BrowserTtsState.LOADING -> stop("user-cancelled-loading")
++            BrowserTtsState.SPEAKING -> pause()
++            BrowserTtsState.PAUSED -> resume()
++        }
++    }
++
++    fun currentUiState(): BrowserTtsUiState = lastUiState
++
++    fun start() {
++        stopInternal(clearQueue = true)
++        val token = ++generation
++        state = BrowserTtsState.LOADING
++        emit("正在提取当前页面…")
++        Log.i(TAG, "TTS_EXTRACT_REQUEST generation=$token")
++        requestPageText(token)
++        mainHandler.postDelayed({
++            if (generation == token && state == BrowserTtsState.LOADING) {
++                fail("页面文字提取超时")
++            }
++        }, EXTRACTION_TIMEOUT_MS)
++    }
++
++    fun acceptPageText(requestGeneration: Int, text: String) {
++        if (requestGeneration != generation || state != BrowserTtsState.LOADING) {
++            Log.i(TAG, "Ignoring stale page extraction generation=$requestGeneration")
++            return
++        }
++        val sanitized = sanitizeForSpeech(text)
++        chunks.clear()
++        chunks += SpeechTextSegmenter.split(sanitized)
++        if (chunks.isEmpty()) {
++            fail("当前页面没有检测到可朗读文字")
++            return
++        }
++        chunkIndex = 0
++        val longest = chunks.maxOfOrNull { it.length } ?: 0
++        Log.i(
++            TAG,
++            "TTS_SEGMENTS policy=punctuation count=${chunks.size} " +
++                "firstChars=${chunks.first().length} maxChars=$longest",
++        )
++        speakCurrent(requestGeneration)
++    }
++
++    fun pause() {
++        if (state != BrowserTtsState.SPEAKING) return
++        // This firmware may report AudioTrack.play() after pause while staying
++        // silent. Stop the stream and deterministically rebuild this sentence.
++        generation++
++        iflytek.stop()
++        prefetcher.stop()
++        localTts?.stop()
++        resetPrefetch()
++        state = BrowserTtsState.PAUSED
++        emit("已暂停 · 第 ${chunkIndex + 1}/${chunks.size} 段")
++        Log.i(TAG, "TTS_PAUSE index=$chunkIndex")
++    }
++
++    fun resume() {
++        if (state != BrowserTtsState.PAUSED || chunks.isEmpty()) return
++        val token = ++generation
++        Log.i(TAG, "TTS_RESUME_RESTART_CHUNK index=$chunkIndex")
++        speakCurrent(token)
++    }
++
++    fun stop(reason: String) {
++        if (state == BrowserTtsState.IDLE && chunks.isEmpty()) return
++        generation++
++        stopInternal(clearQueue = true)
++        state = BrowserTtsState.IDLE
++        clearHighlight()
++        emit("朗读")
++        Log.i(TAG, "TTS_STOP reason=$reason")
++    }
++
++    fun shutdown() {
++        stop("session-shutdown")
++        localTts?.shutdown()
++        localTts = null
++        localReady = false
++    }
++
++    private fun speakCurrent(token: Int) {
++        if (token != generation) return
++        if (chunkIndex >= chunks.size) {
++            finishReading()
++            return
++        }
++        state = BrowserTtsState.SPEAKING
++        emit("正在朗读 · 第 ${chunkIndex + 1}/${chunks.size} 段")
++        val chunk = chunks[chunkIndex]
++        followChunk(chunk)
++        Log.i(TAG, "TTS_CHUNK_START index=$chunkIndex/${chunks.size} chars=${chunk.length}")
++        if (iflytek.hasSystemCredentials()) {
++            usingIflytek = true
++            prefetchNext(chunkIndex + 1, token)
++            iflytek.speak(chunk, object : IflytekTtsEngine.Listener {
++                override fun onStarted() = Unit
++
++                override fun onDone() {
++                    mainHandler.post { advance(token) }
++                }
++
++                override fun onError(message: String) {
++                    mainHandler.post {
++                        if (token == generation) speakWithLocalFallback(token, message)
++                    }
++                }
++            })
++        } else {
++            speakWithLocalFallback(token, null)
++        }
++    }
++
++    private fun prefetchNext(targetIndex: Int, token: Int) {
++        if (targetIndex >= chunks.size || token != generation) return
++        prefetchIndex = targetIndex
++        prefetchedClip = null
++        prefetching = true
++        Log.i(TAG, "TTS_PREFETCH_SUBMITTED index=$targetIndex")
++        prefetcher.synthesize(chunks[targetIndex], object : IflytekTtsEngine.SynthesisListener {
++            override fun onBuffering() = Unit
++
++            override fun onReady(clip: IflytekTtsEngine.PcmClip) {
++                mainHandler.post {
++                    if (token != generation || prefetchIndex != targetIndex) return@post
++                    prefetchedClip = clip
++                    prefetching = false
++                    Log.i(TAG, "TTS_PREFETCH_READY index=$targetIndex")
++                    if (waitingForPrefetch && state == BrowserTtsState.SPEAKING &&
++                        chunkIndex == targetIndex
++                    ) {
++                        playPrefetched(token)
++                    }
++                }
++            }
++
++            override fun onError(message: String) {
++                mainHandler.post {
++                    if (token != generation || prefetchIndex != targetIndex) return@post
++                    prefetching = false
++                    prefetchedClip = null
++                    if (waitingForPrefetch && chunkIndex == targetIndex) {
++                        waitingForPrefetch = false
++                        speakCurrent(token)
++                    }
++                }
++            }
++        })
++    }
++
++    private fun playPrefetched(token: Int) {
++        val clip = prefetchedClip ?: run {
++            speakCurrent(token)
++            return
++        }
++        prefetchedClip = null
++        waitingForPrefetch = false
++        state = BrowserTtsState.SPEAKING
++        usingIflytek = true
++        emit("正在朗读 · 第 ${chunkIndex + 1}/${chunks.size} 段")
++        followChunk(chunks[chunkIndex])
++        Log.i(TAG, "TTS_PREFETCH_PLAY index=$chunkIndex/${chunks.size}")
++        iflytek.play(clip, object : IflytekTtsEngine.Listener {
++            override fun onStarted() {
++                mainHandler.post { prefetchNext(chunkIndex + 1, token) }
++            }
++
++            override fun onDone() {
++                mainHandler.post { advance(token) }
++            }
++
++            override fun onError(message: String) {
++                mainHandler.post {
++                    if (token == generation) speakWithLocalFallback(token, message)
++                }
++            }
++        })
++    }
++
++    private fun advance(token: Int) {
++        if (token != generation || state != BrowserTtsState.SPEAKING) return
++        Log.i(TAG, "TTS_CHUNK_DONE index=$chunkIndex/${chunks.size}")
++        chunkIndex++
++        if (chunkIndex >= chunks.size) {
++            finishReading()
++            return
++        }
++        if (prefetchedClip != null && prefetchIndex == chunkIndex) {
++            playPrefetched(token)
++        } else if (prefetching && prefetchIndex == chunkIndex) {
++            waitingForPrefetch = true
++            emit("正在缓冲 · 第 ${chunkIndex + 1}/${chunks.size} 段")
++        } else {
++            speakCurrent(token)
++        }
++    }
++
++    private fun speakWithLocalFallback(token: Int, cloudError: String?) {
++        if (token != generation) return
++        prefetcher.stop()
++        resetPrefetch()
++        usingIflytek = false
++        val engine = localTts
++        if (!localReady || engine == null) {
++            fail(cloudError ?: "系统朗读引擎不可用")
++            return
++        }
++        if (cloudError != null) Log.w(TAG, "Cloud TTS unavailable; using Android TTS: $cloudError")
++        val options = Bundle()
++        val result = engine.speak(
++            chunks[chunkIndex],
++            TextToSpeech.QUEUE_FLUSH,
++            options,
++            "kbrowser-$token-$chunkIndex",
++        )
++        if (result == TextToSpeech.ERROR) fail("系统朗读启动失败")
++    }
++
++    private fun finishReading() {
++        val total = chunks.size
++        Log.i(TAG, "TTS_COMPLETE chunks=$total")
++        generation++
++        stopInternal(clearQueue = true)
++        state = BrowserTtsState.IDLE
++        clearHighlight()
++        emit("朗读完成")
++        mainHandler.postDelayed({
++            if (state == BrowserTtsState.IDLE) emit("朗读")
++        }, 1_500L)
++    }
++
++    private fun fail(message: String) {
++        Log.w(TAG, "TTS_ERROR $message")
++        generation++
++        stopInternal(clearQueue = true)
++        state = BrowserTtsState.IDLE
++        clearHighlight()
++        lastUiState = BrowserTtsUiState(BrowserTtsState.IDLE, message)
++        onUiState(lastUiState)
++    }
++
++    private fun stopInternal(clearQueue: Boolean) {
++        iflytek.stop()
++        prefetcher.stop()
++        localTts?.stop()
++        resetPrefetch()
++        usingIflytek = false
++        if (clearQueue) {
++            chunks.clear()
++            chunkIndex = 0
++        }
++    }
++
++    private fun resetPrefetch() {
++        prefetchedClip = null
++        prefetchIndex = -1
++        prefetching = false
++        waitingForPrefetch = false
++    }
++
++    private fun emit(message: String) {
++        lastUiState = BrowserTtsUiState(state, message, chunkIndex, chunks.size)
++        onUiState(lastUiState)
++    }
++
++    private fun sanitizeForSpeech(raw: String): String {
++        val normalized = Normalizer.normalize(raw, Normalizer.Form.NFKC)
++        val result = StringBuilder(normalized.length.coerceAtMost(MAX_TEXT_CHARS))
++        var offset = 0
++        var previousSpace = false
++        var consecutiveNewlines = 0
++        while (offset < normalized.length && result.length < MAX_TEXT_CHARS) {
++            val codePoint = normalized.codePointAt(offset)
++            offset += Character.charCount(codePoint)
++            val type = Character.getType(codePoint)
++            if (type == Character.CONTROL.toInt() && codePoint != '\n'.code && codePoint != '\r'.code &&
++                codePoint != '\t'.code
++            ) continue
++            if (type == Character.FORMAT.toInt() || type == Character.PRIVATE_USE.toInt() ||
++                type == Character.UNASSIGNED.toInt()
++            ) continue
++            when (codePoint) {
++                '\r'.code, '\n'.code -> {
++                    if (consecutiveNewlines < 2 && result.isNotEmpty()) result.append('\n')
++                    consecutiveNewlines++
++                    previousSpace = false
++                }
++                '\t'.code, ' '.code -> {
++                    if (!previousSpace && result.isNotEmpty()) result.append(' ')
++                    previousSpace = true
++                }
++                else -> {
++                    result.appendCodePoint(codePoint)
++                    previousSpace = false
++                    consecutiveNewlines = 0
++                }
++            }
++        }
++        return result.toString().trim()
++    }
++
++    companion object {
++        private const val TAG = "KBrowserTts"
++        private const val MAX_TEXT_CHARS = 500_000
++        private const val EXTRACTION_TIMEOUT_MS = 8_000L
++    }
++}
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserTtsBridge.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserTtsBridge.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..094c496ae7fc0e2666d29b97e12ed99a4d61be9e
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserTtsBridge.kt
+@@ -0,0 +1,106 @@
++package org.mozilla.fenix.dualscreen
++
++import android.util.Log
++import org.json.JSONObject
++import org.mozilla.geckoview.GeckoRuntime
++import org.mozilla.geckoview.GeckoSession
++import org.mozilla.geckoview.WebExtension
++
++/** Native-messaging bridge used only to read and follow the currently visible web document. */
++internal class BrowserTtsBridge(
++    private val runtime: GeckoRuntime,
++    private val session: GeckoSession,
++    private val onPageText: (Int, String) -> Unit,
++) {
++    private var extension: WebExtension? = null
++    private var port: WebExtension.Port? = null
++
++    fun install() {
++        runtime.webExtensionController.ensureBuiltIn(EXTENSION_URL, EXTENSION_ID).accept(
++            { installed ->
++                if (installed == null) {
++                    Log.w(TAG, "TTS content extension install returned null")
++                    return@accept
++                }
++                extension = installed
++                session.webExtensionController.setMessageDelegate(
++                    installed,
++                    object : WebExtension.MessageDelegate {
++                        override fun onConnect(connectedPort: WebExtension.Port) {
++                            if (connectedPort.sender.session !== session) {
++                                connectedPort.disconnect()
++                                return
++                            }
++                            port?.disconnect()
++                            port = connectedPort
++                            connectedPort.setDelegate(object : WebExtension.PortDelegate {
++                                override fun onPortMessage(
++                                    message: Any,
++                                    sourcePort: WebExtension.Port,
++                                ) {
++                                    handleMessage(message)
++                                }
++
++                                override fun onDisconnect(sourcePort: WebExtension.Port) {
++                                    if (port === sourcePort) port = null
++                                }
++                            })
++                            Log.i(TAG, "TTS_CONTENT_BRIDGE_CONNECTED")
++                        }
++                    },
++                    NATIVE_APP,
++                )
++                Log.i(TAG, "TTS_CONTENT_EXTENSION_READY")
++            },
++            { error -> Log.w(TAG, "TTS content extension install failed", error) },
++        )
++    }
++
++    fun requestPageText(requestId: Int): Boolean {
++        val connected = port ?: return false
++        connected.postMessage(
++            JSONObject()
++                .put("type", "extract")
++                .put("requestId", requestId),
++        )
++        return true
++    }
++
++    fun followChunk(text: String) {
++        port?.postMessage(
++            JSONObject()
++                .put("type", "follow")
++                .put("text", text.take(160)),
++        )
++    }
++
++    fun clearHighlight() {
++        port?.postMessage(JSONObject().put("type", "clear"))
++    }
++
++    fun shutdown() {
++        port?.disconnect()
++        port = null
++        extension = null
++    }
++
++    private fun handleMessage(message: Any) {
++        val packet = when (message) {
++            is JSONObject -> message
++            is String -> runCatching { JSONObject(message) }.getOrNull()
++            else -> null
++        } ?: return
++        if (packet.optString("type") != "pageText") return
++        val requestId = packet.optInt("requestId", -1)
++        val text = packet.optString("text")
++        Log.i(TAG, "TTS_PAGE_TEXT chars=${text.length} request=$requestId")
++        onPageText(requestId, text)
++    }
++
++    companion object {
++        private const val TAG = "KBrowserTts"
++        private const val EXTENSION_URL = "resource://android/assets/kbrowser_tts/"
++        private const val EXTENSION_ID = "kbrowser-tts@kemi.local"
++        private const val NATIVE_APP = "kbrowser_tts"
++    }
++}
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 4b925bbe0f8a09f7032eb91f968371e7fdffcfbd..dcfddaf9fdbd64e14c5bb27bf53c3e2a133aaaf8 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -17,6 +17,7 @@ import android.os.Bundle
+ import android.os.Handler
+ import android.os.Looper
+ import android.os.SystemClock
++import android.util.Log
+ import android.view.Display
+ import android.view.Gravity
+ import android.view.InputDevice
+@@ -90,6 +91,9 @@ open class DualScreenBrowserActivity : Activity() {
+     internal open val isSingleScreen = false
+     private var addressField: EditText? = null
+     private var loadingBar: ProgressBar? = null
++    private var ttsButton: TextView? = null
++    private var ttsOverlay: LinearLayout? = null
++    private var ttsStatus: TextView? = null
+     private var finishingFromPair = false
+     private lateinit var rootLayout: FrameLayout
+     private var lastMouseX = TARGET_WIDTH_PX / 2f
+@@ -161,7 +165,10 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         rootLayout = FrameLayout(this).apply {
+             addView(browserSurface)
+-            if (isTopDisplay) addView(createToolbar())
++            if (isTopDisplay) {
++                addView(createToolbar())
++                addView(createTtsOverlay())
++            }
+         }
+         setContentView(rootLayout)
+         enterFullscreen()
+@@ -265,6 +272,11 @@ open class DualScreenBrowserActivity : Activity() {
+         toolbar.addView(navButton("⌂ 主页", "主页", dp(84)) {
+             DualScreenCoordinator.navigate(HOME_URL)
+         })
++        val readAloud = navButton("🔊 朗读", "朗读网页", dp(92)) {
++            DualScreenCoordinator.toggleReadAloud()
++        }
++        ttsButton = readAloud
++        toolbar.addView(readAloud)
+         toolbar.addView(navButton("退出", "退出双屏浏览器", dp(72)) {
+             DualScreenCoordinator.exitAll()
+         })
+@@ -286,6 +298,40 @@ open class DualScreenBrowserActivity : Activity() {
+         return container
+     }
+ 
++    private fun createTtsOverlay(): View = LinearLayout(this).apply {
++        orientation = LinearLayout.HORIZONTAL
++        gravity = Gravity.CENTER_VERTICAL
++        setPadding(dp(14), dp(5), dp(6), dp(5))
++        background = GradientDrawable().apply {
++            setColor(Color.rgb(31, 105, 224))
++            cornerRadius = dp(12).toFloat()
++        }
++        elevation = dp(4).toFloat()
++        visibility = View.GONE
++        layoutParams = FrameLayout.LayoutParams(dp(330), dp(54), Gravity.TOP or Gravity.END).apply {
++            topMargin = dp(86)
++            marginEnd = dp(12)
++        }
++        ttsStatus = TextView(this@DualScreenBrowserActivity).apply {
++            text = "正在准备朗读…"
++            textSize = 14f
++            setTextColor(Color.WHITE)
++            maxLines = 1
++            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
++            gravity = Gravity.CENTER_VERTICAL
++        }.also(::addView)
++        addView(navButton("■ 停止", "停止朗读", dp(78), emphasized = true) {
++            DualScreenCoordinator.stopReadAloud("user-stop")
++        }.apply {
++            setTextColor(Color.WHITE)
++            background = GradientDrawable().apply {
++                setColor(Color.rgb(24, 82, 178))
++                cornerRadius = dp(9).toFloat()
++            }
++            layoutParams = LinearLayout.LayoutParams(dp(78), dp(42))
++        })
++    }.also { ttsOverlay = it }
++
+     private fun navButton(
+         label: String,
+         description: String,
+@@ -390,6 +436,36 @@ open class DualScreenBrowserActivity : Activity() {
+         updateAddress(url)
+     }
+ 
++    internal fun ttsStateChanged(ui: BrowserTtsUiState) {
++        if (!isTopDisplay) return
++        runOnUiThread {
++            when (ui.state) {
++                BrowserTtsState.IDLE -> {
++                    ttsButton?.text = "🔊 朗读"
++                    ttsOverlay?.visibility = View.GONE
++                    if (ui.message != "朗读" && ui.message != "朗读完成") {
++                        Toast.makeText(this, ui.message, Toast.LENGTH_SHORT).show()
++                    }
++                }
++                BrowserTtsState.LOADING -> {
++                    ttsButton?.text = "… 准备"
++                    ttsStatus?.text = ui.message
++                    ttsOverlay?.visibility = View.VISIBLE
++                }
++                BrowserTtsState.SPEAKING -> {
++                    ttsButton?.text = "⏸ 暂停"
++                    ttsStatus?.text = ui.message
++                    ttsOverlay?.visibility = View.VISIBLE
++                }
++                BrowserTtsState.PAUSED -> {
++                    ttsButton?.text = "▶ 继续"
++                    ttsStatus?.text = ui.message
++                    ttsOverlay?.visibility = View.VISIBLE
++                }
++            }
++        }
++    }
++
+     override fun onDestroy() {
+         val closePair = isFinishing && !isChangingConfigurations && !finishingFromPair
+         val destroyedTopDisplay = isTopDisplay
+@@ -716,6 +792,8 @@ private object DualScreenCoordinator {
+     private var selectedText: String? = null
+     private var exiting = false
+     private var singleScreenSession = false
++    private var ttsController: BrowserReadAloudController? = null
++    private var ttsBridge: BrowserTtsBridge? = null
+ 
+     @Synchronized
+     fun currentUrl(): String = currentUrl
+@@ -741,10 +819,12 @@ private object DualScreenCoordinator {
+             topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
+             topDisplay = WeakReference(activity)
+             ensureSession(activity, initialUrl, singleScreen = true)
++            ttsController?.currentUiState()?.let(activity::ttsStateChanged)
+         } else if (activity.isTopDisplay) {
+             topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
+             topDisplay = WeakReference(activity)
+             activity.locationChanged(currentUrl)
++            ttsController?.currentUiState()?.let(activity::ttsStateChanged)
+         } else {
+             controller.get()?.takeIf { it !== activity }?.finishFromPair()
+             controller = WeakReference(activity)
+@@ -898,6 +978,16 @@ private object DualScreenCoordinator {
+         session?.reload()
+     }
+ 
++    @Synchronized
++    fun toggleReadAloud() {
++        ttsController?.toggle()
++    }
++
++    @Synchronized
++    fun stopReadAloud(reason: String) {
++        ttsController?.stop(reason)
++    }
++
+     @Synchronized
+     fun memberDestroyed(destroyedTopDisplay: Boolean) {
+         if (!exiting) {
+@@ -927,6 +1017,7 @@ private object DualScreenCoordinator {
+         val createdSession = GeckoSession().apply {
+             setProgressDelegate(object : GeckoSession.ProgressDelegate {
+                 override fun onPageStart(session: GeckoSession, url: String) {
++                    ttsController?.stop("page-start")
+                     currentUrl = url
+                     selectedText = null
+                     topDisplay.get()?.pageStarted(url)
+@@ -1007,6 +1098,18 @@ private object DualScreenCoordinator {
+             setFocused(true)
+         }
+         session = createdSession
++        val runtime = activity.components.core.geckoRuntime
++        val readAloudController = BrowserReadAloudController(
++            activity,
++            requestPageText = { requestId -> requestReadablePageText(requestId) },
++            followChunk = { text -> ttsBridge?.followChunk(text) },
++            clearHighlight = { ttsBridge?.clearHighlight() },
++            onUiState = { ui -> topDisplay.get()?.ttsStateChanged(ui) },
++        )
++        ttsController = readAloudController
++        ttsBridge = BrowserTtsBridge(runtime, createdSession) { requestId, text ->
++            mainHandler.post { ttsController?.acceptPageText(requestId, text) }
++        }.also { it.install() }
+         val sharedCompositor = DualScreenSharedCompositor(singleScreen)
+         compositor = sharedCompositor
+         sharedCompositor.start { inputSurface ->
+@@ -1034,6 +1137,10 @@ private object DualScreenCoordinator {
+     }
+ 
+     private fun shutdownSession() {
++        ttsController?.shutdown()
++        ttsController = null
++        ttsBridge?.shutdown()
++        ttsBridge = null
+         val activeSession = session
+         val display = geckoDisplay
+         if (activeSession != null && display != null) {
+@@ -1050,4 +1157,47 @@ private object DualScreenCoordinator {
+         topSurface = null
+         bottomSurface = null
+     }
++
++    private fun requestReadablePageText(requestId: Int) {
++        if (currentUrl == DualScreenBrowserActivity.HOME_URL) {
++            val activity = topDisplay.get() ?: controller.get()
++            val text = runCatching {
++                activity?.assets?.open("dual_screen_home.html")?.bufferedReader()?.use { reader ->
++                    reader.readText()
++                        .replace(Regex("(?is)<style[^>]*>.*?</style>"), " ")
++                        .replace(Regex("(?is)<script[^>]*>.*?</script>"), " ")
++                        .let {
++                            android.text.Html.fromHtml(
++                                it,
++                                android.text.Html.FROM_HTML_MODE_LEGACY,
++                            ).toString()
++                        }
++                }.orEmpty()
++            }.getOrDefault("")
++            Log.i("KBrowserTts", "TTS_PAGE_TEXT source=home chars=${text.length} request=$requestId")
++            ttsController?.acceptPageText(requestId, text)
++            return
++        }
++        if (ttsBridge?.requestPageText(requestId) == true) return
++        // The content script may still be connecting immediately after a load.
++        // Retry once, then use Gecko's built-in semantic page extractor so the
++        // feature remains usable on pages that disallow extension injection.
++        mainHandler.postDelayed({
++            if (ttsBridge?.requestPageText(requestId) == true) return@postDelayed
++            val activeSession = session ?: run {
++                ttsController?.acceptPageText(requestId, "")
++                return@postDelayed
++            }
++            Log.i("KBrowserTts", "TTS_PAGE_EXTRACTION_FALLBACK source=Gecko")
++            activeSession.sessionPageExtractor.getPageContent(
++                org.mozilla.geckoview.PageExtractionController.ContentParams(true),
++            ).accept(
++                { text -> ttsController?.acceptPageText(requestId, text ?: "") },
++                { error ->
++                    Log.w("KBrowserTts", "Gecko page extraction failed", error)
++                    ttsController?.acceptPageText(requestId, "")
++                },
++            )
++        }, 600L)
++    }
+ }
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/IflytekTtsEngine.java b/app/src/main/java/org/mozilla/fenix/dualscreen/IflytekTtsEngine.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..0d6ee1c91a6d46f12242e7d502e19acd45edfad7
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/IflytekTtsEngine.java
+@@ -0,0 +1,570 @@
++package org.mozilla.fenix.dualscreen;
++
++import android.content.Context;
++import android.media.AudioAttributes;
++import android.media.AudioFormat;
++import android.media.AudioManager;
++import android.media.AudioTrack;
++import android.provider.Settings;
++import android.util.Base64;
++import android.util.Log;
++
++import org.json.JSONObject;
++
++import java.io.IOException;
++import java.io.ByteArrayOutputStream;
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.util.Locale;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.concurrent.atomic.AtomicLong;
++
++import okhttp3.Call;
++import okhttp3.HttpUrl;
++import okhttp3.MediaType;
++import okhttp3.OkHttpClient;
++import okhttp3.Request;
++import okhttp3.RequestBody;
++import okhttp3.Response;
++import okhttp3.WebSocket;
++import okhttp3.WebSocketListener;
++
++/** Streaming iFlytek AIUI TTS backed by system-provisioned Settings.Global credentials. */
++public final class IflytekTtsEngine {
++    private static final String TAG = "KBrowserIflytekTts";
++    private static final String SETTINGS_KEY = "iflytek_params";
++    private static final String AUTH_URL = "http://api.voice.gskiot.com/voice-api/voice/auth";
++    // OkHttp represents a WebSocket handshake as an HTTP URL internally and
++    // upgrades it when newWebSocket() is called.
++    private static final String WS_HANDSHAKE_URL = "http://wsapi.xfyun.cn/v1/aiui";
++    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
++    private static final AtomicLong AUTHORIZED_UNTIL = new AtomicLong();
++
++    public interface Listener {
++        void onStarted();
++        void onDone();
++        void onError(String message);
++    }
++
++    public interface SynthesisListener {
++        void onBuffering();
++        void onReady(PcmClip clip);
++        void onError(String message);
++    }
++
++    public static final class PcmClip {
++        private final byte[] pcm;
++
++        private PcmClip(byte[] pcm) {
++            this.pcm = pcm;
++        }
++    }
++
++    private final Context context;
++    private final OkHttpClient client = new OkHttpClient.Builder()
++            .connectTimeout(12, TimeUnit.SECONDS)
++            .readTimeout(20, TimeUnit.SECONDS)
++            .writeTimeout(20, TimeUnit.SECONDS)
++            .build();
++    private final AtomicInteger generation = new AtomicInteger();
++    private WebSocket webSocket;
++    private AudioTrack audioTrack;
++    private boolean paused;
++    private int samplesWritten;
++    private volatile long playbackStartedAt;
++
++    public IflytekTtsEngine(Context context) {
++        this.context = context.getApplicationContext();
++    }
++
++    public boolean hasSystemCredentials() {
++        String value = Settings.Global.getString(context.getContentResolver(), SETTINGS_KEY);
++        return value != null && !value.trim().isEmpty();
++    }
++
++    public void speak(String text, Listener listener) {
++        stop();
++        final int requestGeneration = generation.incrementAndGet();
++        final long submittedAt = android.os.SystemClock.elapsedRealtime();
++        Log.i(TAG, "TTS request submitted: " + text.length() + " chars");
++        try {
++            Credentials credentials = readCredentials();
++            Log.i(TAG, "Using system-provisioned iFlytek credentials");
++            authenticate(credentials, requestGeneration, text, submittedAt, listener);
++        } catch (Exception exception) {
++            Log.w(TAG, "System iFlytek credentials unavailable", exception);
++            listener.onError(safeMessage(exception, "系统未配置讯飞语音参数"));
++        }
++    }
++
++    /** Synthesizes without playing so the next paragraph can buffer in parallel. */
++    public void synthesize(String text, SynthesisListener listener) {
++        stop();
++        final int requestGeneration = generation.incrementAndGet();
++        try {
++            Credentials credentials = readCredentials();
++            listener.onBuffering();
++            authenticateForSynthesis(credentials, requestGeneration, text, listener);
++        } catch (Exception exception) {
++            listener.onError(safeMessage(exception, "系统未配置讯飞语音参数"));
++        }
++    }
++
++    /** Plays an already synthesized clip while another engine buffers the next one. */
++    public void play(PcmClip clip, Listener listener) {
++        stop();
++        final int requestGeneration = generation.incrementAndGet();
++        prepareAudio();
++        listener.onStarted();
++        client.dispatcher().executorService().execute(() -> {
++            AudioTrack current = audioTrack;
++            if (current == null || !isCurrent(requestGeneration))
++                return;
++            startAudio(current);
++            int written = current.write(clip.pcm, 0, clip.pcm.length, AudioTrack.WRITE_BLOCKING);
++            if (written > 0)
++                samplesWritten = written / 2;
++            finishAfterPlayback(requestGeneration, listener);
++        });
++    }
++
++    public void pause() {
++        paused = true;
++        AudioTrack current = audioTrack;
++        if (current != null && current.getPlayState() == AudioTrack.PLAYSTATE_PLAYING)
++            current.pause();
++    }
++
++    /** Returns false when the paused stream already drained and must be restarted. */
++    public boolean resume() {
++        paused = false;
++        AudioTrack current = audioTrack;
++        if (current != null && current.getState() == AudioTrack.STATE_INITIALIZED) {
++            current.play();
++            boolean resumed = current.getPlayState() == AudioTrack.PLAYSTATE_PLAYING;
++            Log.i(TAG, resumed ? "TTS_AUDIO_RESUMED" : "TTS_AUDIO_RESUME_FAILED");
++            return resumed;
++        }
++        Log.i(TAG, "TTS_AUDIO_RESTART_REQUIRED");
++        return false;
++    }
++
++    public void stop() {
++        generation.incrementAndGet();
++        WebSocket socket = webSocket;
++        webSocket = null;
++        if (socket != null)
++            socket.close(1000, "cancelled");
++        releaseAudio();
++        paused = false;
++    }
++
++    private void authenticate(Credentials credentials, int requestGeneration, String text,
++                              long submittedAt, Listener listener) throws Exception {
++        if (AUTHORIZED_UNTIL.get() > System.currentTimeMillis()) {
++            openWebSocket(credentials, requestGeneration, text, submittedAt, listener);
++            return;
++        }
++        long now = System.currentTimeMillis();
++        JSONObject body = new JSONObject();
++        body.put("xiriSn", credentials.wifiMac);
++        body.put("license", credentials.token);
++        body.put("channel", "NEWLINK01");
++        body.put("devicewifiMac", credentials.wifiMac);
++        body.put("deviceMac", credentials.wifiMac);
++        body.put("sn", credentials.sn);
++        body.put("clientVersion", credentials.systemVersion);
++        body.put("timestamp", Long.toString(now));
++        Request request = new Request.Builder().url(AUTH_URL)
++                .post(RequestBody.create(body.toString(), JSON)).build();
++        client.newCall(request).enqueue(new okhttp3.Callback() {
++            @Override
++            public void onFailure(Call call, IOException exception) {
++                if (isCurrent(requestGeneration))
++                    listener.onError("讯飞鉴权网络异常");
++            }
++
++            @Override
++            public void onResponse(Call call, Response response) {
++                try (Response closeable = response) {
++                    String responseText = closeable.body() == null ? "" : closeable.body().string();
++                    JSONObject result = new JSONObject(responseText);
++                    JSONObject data = result.optJSONObject("data");
++                    if (!closeable.isSuccessful() || !"00000".equals(result.optString("code"))
++                            || data == null || data.optInt("status", -1) != 0) {
++                        throw new IOException("讯飞鉴权失败");
++                    }
++                    if (isCurrent(requestGeneration))
++                        Log.i(TAG, "Device authentication succeeded");
++                    AUTHORIZED_UNTIL.set(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5));
++                    if (isCurrent(requestGeneration))
++                        openWebSocket(credentials, requestGeneration, text, submittedAt, listener);
++                } catch (Exception exception) {
++                    Log.w(TAG, "Device authentication failed", exception);
++                    if (isCurrent(requestGeneration))
++                        listener.onError(safeMessage(exception, "讯飞鉴权失败"));
++                }
++            }
++        });
++    }
++
++    private void authenticateForSynthesis(Credentials credentials, int requestGeneration,
++                                           String text, SynthesisListener listener)
++            throws Exception {
++        if (AUTHORIZED_UNTIL.get() > System.currentTimeMillis()) {
++            openSynthesisSocket(credentials, requestGeneration, text, listener);
++            return;
++        }
++        long now = System.currentTimeMillis();
++        JSONObject body = new JSONObject();
++        body.put("xiriSn", credentials.wifiMac);
++        body.put("license", credentials.token);
++        body.put("channel", "NEWLINK01");
++        body.put("devicewifiMac", credentials.wifiMac);
++        body.put("deviceMac", credentials.wifiMac);
++        body.put("sn", credentials.sn);
++        body.put("clientVersion", credentials.systemVersion);
++        body.put("timestamp", Long.toString(now));
++        Request request = new Request.Builder().url(AUTH_URL)
++                .post(RequestBody.create(body.toString(), JSON)).build();
++        client.newCall(request).enqueue(new okhttp3.Callback() {
++            @Override
++            public void onFailure(Call call, IOException exception) {
++                if (isCurrent(requestGeneration))
++                    listener.onError("讯飞鉴权网络异常");
++            }
++
++            @Override
++            public void onResponse(Call call, Response response) {
++                try (Response closeable = response) {
++                    String responseText = closeable.body() == null ? "" : closeable.body().string();
++                    JSONObject result = new JSONObject(responseText);
++                    JSONObject data = result.optJSONObject("data");
++                    if (!closeable.isSuccessful() || !"00000".equals(result.optString("code"))
++                            || data == null || data.optInt("status", -1) != 0)
++                        throw new IOException("讯飞鉴权失败");
++                    AUTHORIZED_UNTIL.set(System.currentTimeMillis()
++                            + TimeUnit.MINUTES.toMillis(5));
++                    if (isCurrent(requestGeneration))
++                        openSynthesisSocket(credentials, requestGeneration, text, listener);
++                } catch (Exception exception) {
++                    if (isCurrent(requestGeneration))
++                        listener.onError(safeMessage(exception, "讯飞鉴权失败"));
++                }
++            }
++        });
++    }
++
++    private void openSynthesisSocket(Credentials credentials, int requestGeneration, String text,
++                                     SynthesisListener listener) throws Exception {
++        Request request = new Request.Builder().url(signedWebSocketUrl(credentials))
++                .header("Origin", "http://wsapi.xfyun.cn").build();
++        webSocket = client.newWebSocket(request, new WebSocketListener() {
++            private final ByteArrayOutputStream pcm = new ByteArrayOutputStream();
++            private boolean streamFinished;
++
++            @Override
++            public void onMessage(WebSocket socket, String message) {
++                if (!isCurrent(requestGeneration))
++                    return;
++                try {
++                    JSONObject packet = new JSONObject(message);
++                    int code = parseCode(packet.opt("code"));
++                    if (code != 0)
++                        throw new IOException(packet.optString("desc", "讯飞合成失败"));
++                    if ("started".equals(packet.optString("action"))) {
++                        socket.send(text);
++                        socket.send("--end--");
++                        return;
++                    }
++                    if (!"result".equals(packet.optString("action")))
++                        return;
++                    JSONObject data = packet.optJSONObject("data");
++                    if (data == null)
++                        return;
++                    String content = data.optString("content");
++                    if (!content.isEmpty()) {
++                        byte[] bytes = Base64.decode(content, Base64.DEFAULT);
++                        pcm.write(bytes, 0, bytes.length);
++                    }
++                    if (data.optBoolean("is_last", false)) {
++                        streamFinished = true;
++                        if (pcm.size() == 0)
++                            throw new IOException("讯飞未返回语音数据");
++                        Log.i(TAG, "Next TTS segment buffered: " + pcm.size() + " bytes");
++                        listener.onReady(new PcmClip(pcm.toByteArray()));
++                    }
++                } catch (Exception exception) {
++                    socket.cancel();
++                    listener.onError(safeMessage(exception, "讯飞语音缓冲失败"));
++                }
++            }
++
++            @Override
++            public void onFailure(WebSocket socket, Throwable throwable, Response response) {
++                if (!streamFinished && isCurrent(requestGeneration))
++                    listener.onError(safeMessage(throwable, "讯飞语音缓冲失败"));
++            }
++        });
++    }
++
++    private void openWebSocket(Credentials credentials, int requestGeneration, String text,
++                               long submittedAt, Listener listener) throws Exception {
++        Request request = new Request.Builder().url(signedWebSocketUrl(credentials))
++                .header("Origin", "http://wsapi.xfyun.cn").build();
++        webSocket = client.newWebSocket(request, new WebSocketListener() {
++            private boolean streamFinished;
++            private boolean firstPcmLogged;
++
++            @Override
++            public void onMessage(WebSocket socket, String message) {
++                if (!isCurrent(requestGeneration))
++                    return;
++                try {
++                    JSONObject packet = new JSONObject(message);
++                    int code = parseCode(packet.opt("code"));
++                    if (code != 0)
++                        throw new IOException(packet.optString("desc", "讯飞合成失败"));
++                    String action = packet.optString("action");
++                    if ("started".equals(action)) {
++                        prepareAudio();
++                        Log.i(TAG, "AIUI TTS stream started");
++                        listener.onStarted();
++                        socket.send(text);
++                        socket.send("--end--");
++                        return;
++                    }
++                    if (!"result".equals(action))
++                        return;
++                    JSONObject data = packet.optJSONObject("data");
++                    if (data == null)
++                        return;
++                    String content = data.optString("content");
++                    if (!content.isEmpty()) {
++                        byte[] pcm = Base64.decode(content, Base64.DEFAULT);
++                        AudioTrack current = audioTrack;
++                        if (current != null) {
++                            if (!paused && current.getPlayState() != AudioTrack.PLAYSTATE_PLAYING)
++                                startAudio(current);
++                            int written = current.write(pcm, 0, pcm.length,
++                                    AudioTrack.WRITE_BLOCKING);
++                            if (written > 0) {
++                                samplesWritten += written / 2;
++                                if (!firstPcmLogged) {
++                                    firstPcmLogged = true;
++                                    Log.i(TAG, "First PCM queued in "
++                                            + (android.os.SystemClock.elapsedRealtime()
++                                            - submittedAt) + " ms");
++                                }
++                            }
++                        }
++                    }
++                    if (data.optBoolean("is_last", false)) {
++                        streamFinished = true;
++                        Log.i(TAG, "AIUI TTS stream complete, waiting for playback drain");
++                        finishAfterPlayback(requestGeneration, listener);
++                    }
++                } catch (Exception exception) {
++                    socket.cancel();
++                    releaseAudio();
++                    listener.onError(safeMessage(exception, "讯飞语音数据异常"));
++                }
++            }
++
++            @Override
++            public void onFailure(WebSocket socket, Throwable throwable, Response response) {
++                if (streamFinished) {
++                    Log.i(TAG, "AIUI connection closed after final audio packet");
++                    return;
++                }
++                if (isCurrent(requestGeneration)) {
++                    Log.w(TAG, "AIUI TTS WebSocket failed", throwable);
++                    releaseAudio();
++                    listener.onError(safeMessage(throwable, "讯飞语音连接失败"));
++                }
++            }
++        });
++    }
++
++    private HttpUrl signedWebSocketUrl(Credentials credentials) throws Exception {
++        JSONObject param = new JSONObject();
++        param.put("auth_id", credentials.authId);
++        param.put("data_type", "text");
++        param.put("vcn", "x2_xiaojuan");
++        param.put("scene", "IFLYTEK.tts");
++        param.put("tts_aue", "raw");
++        String paramBase64 = Base64.encodeToString(
++                param.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
++        String curtime = Long.toString(System.currentTimeMillis() / 1000L);
++        String checksum = sha256(credentials.apiKey + curtime + paramBase64);
++        return HttpUrl.get(WS_HANDSHAKE_URL).newBuilder()
++                .addQueryParameter("appid", credentials.appId)
++                .addQueryParameter("checksum", checksum)
++                .addQueryParameter("curtime", curtime)
++                .addQueryParameter("param", paramBase64)
++                .addQueryParameter("signtype", "sha256")
++                .build();
++    }
++
++    private void prepareAudio() {
++        releaseAudio();
++        samplesWritten = 0;
++        playbackStartedAt = 0L;
++        int minimum = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_MONO,
++                AudioFormat.ENCODING_PCM_16BIT);
++        audioTrack = new AudioTrack.Builder()
++                .setAudioAttributes(new AudioAttributes.Builder()
++                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
++                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
++                .setAudioFormat(new AudioFormat.Builder().setSampleRate(16000)
++                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
++                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
++                .setBufferSizeInBytes(Math.max(minimum * 4, 32768))
++                .setTransferMode(AudioTrack.MODE_STREAM)
++                .build();
++    }
++
++    private void startAudio(AudioTrack track) {
++        if (playbackStartedAt == 0L)
++            playbackStartedAt = android.os.SystemClock.elapsedRealtime();
++        track.play();
++    }
++
++    private void finishAfterPlayback(int requestGeneration, Listener listener) {
++        AudioTrack current = audioTrack;
++        if (current == null || samplesWritten <= 0) {
++            releaseAudio();
++            listener.onDone();
++            return;
++        }
++        final int targetSamples = samplesWritten;
++        final long startedAt = playbackStartedAt > 0L
++                ? playbackStartedAt : android.os.SystemClock.elapsedRealtime();
++        // PCM is 16 kHz mono 16-bit. Some target firmware resets/freezes
++        // playbackHeadPosition as soon as a short streaming track underruns;
++        // waiting for the head to reach targetSamples then stalls every other
++        // prefetched phrase until the old 30-second timeout. The submitted PCM
++        // duration is authoritative and remains stable across that firmware.
++        final long pcmDurationMillis = Math.max(1L,
++                (targetSamples * 1000L + 15_999L) / 16_000L);
++        client.dispatcher().executorService().execute(() -> {
++            long deadline = Math.max(android.os.SystemClock.elapsedRealtime(),
++                    startedAt + pcmDurationMillis) + 180L;
++            while (isCurrent(requestGeneration)
++                    && android.os.SystemClock.elapsedRealtime() < deadline) {
++                try {
++                    Thread.sleep(10L);
++                } catch (InterruptedException exception) {
++                    Thread.currentThread().interrupt();
++                    break;
++                }
++            }
++            if (isCurrent(requestGeneration)) {
++                releaseAudio();
++                Log.i(TAG, "PCM playback complete samples=" + targetSamples
++                        + " durationMs=" + pcmDurationMillis);
++                listener.onDone();
++            }
++        });
++    }
++
++    private synchronized void releaseAudio() {
++        AudioTrack current = audioTrack;
++        audioTrack = null;
++        playbackStartedAt = 0L;
++        if (current == null)
++            return;
++        try {
++            current.stop();
++        } catch (IllegalStateException ignored) {
++        }
++        current.release();
++    }
++
++    private Credentials readCredentials() throws Exception {
++        String raw = Settings.Global.getString(context.getContentResolver(), SETTINGS_KEY);
++        if (raw == null || raw.trim().isEmpty())
++            throw new IllegalStateException("系统未配置讯飞语音参数");
++        JSONObject root = new JSONObject(raw);
++        JSONObject values = root.optJSONObject("xunfei");
++        if (values == null)
++            values = root;
++        Credentials result = new Credentials();
++        result.token = require(values, "token");
++        result.appId = require(values, "app_id");
++        result.apiKey = require(values, "api_key");
++        result.wifiMac = first(root.optString("wifi_mac"), values.optString("wifi_mac"));
++        if (result.wifiMac.isEmpty())
++            throw new IllegalStateException("系统讯飞参数缺少 wifi_mac");
++        result.wifiMac = result.wifiMac.toLowerCase(Locale.ROOT);
++        result.authId = first(root.optString("auth_id"), values.optString("auth_id"));
++        if (result.authId.isEmpty())
++            result.authId = md5(result.wifiMac.replace(":", ""));
++        result.sn = first(root.optString("sn"), values.optString("sn"));
++        if (result.sn.isEmpty())
++            result.sn = "QUALMETA-" + result.wifiMac.toUpperCase(Locale.ROOT);
++        result.systemVersion = first(root.optString("system_version"),
++                values.optString("system_version"));
++        if (result.systemVersion.isEmpty())
++            result.systemVersion = "KBrowser";
++        return result;
++    }
++
++    private boolean isCurrent(int value) {
++        return generation.get() == value;
++    }
++
++    private static int parseCode(Object value) {
++        if (value == null)
++            return 0;
++        try {
++            return Integer.parseInt(String.valueOf(value));
++        } catch (NumberFormatException exception) {
++            return -1;
++        }
++    }
++
++    private static String require(JSONObject object, String key) {
++        String value = object.optString(key);
++        if (value.isEmpty())
++            throw new IllegalStateException("系统讯飞参数缺少 " + key);
++        return value;
++    }
++
++    private static String first(String first, String second) {
++        return first == null || first.isEmpty() ? (second == null ? "" : second) : first;
++    }
++
++    private static String md5(String value) throws Exception {
++        return hex(MessageDigest.getInstance("MD5").digest(
++                value.getBytes(StandardCharsets.UTF_8)));
++    }
++
++    private static String sha256(String value) throws Exception {
++        return hex(MessageDigest.getInstance("SHA-256").digest(
++                value.getBytes(StandardCharsets.UTF_8)));
++    }
++
++    private static String hex(byte[] bytes) {
++        StringBuilder result = new StringBuilder(bytes.length * 2);
++        for (byte value : bytes)
++            result.append(String.format(Locale.ROOT, "%02x", value & 0xff));
++        return result.toString();
++    }
++
++    private static String safeMessage(Throwable throwable, String fallback) {
++        return throwable.getMessage() == null || throwable.getMessage().trim().isEmpty()
++                ? fallback : throwable.getMessage();
++    }
++
++    private static final class Credentials {
++        String token;
++        String appId;
++        String apiKey;
++        String wifiMac;
++        String authId;
++        String sn;
++        String systemVersion;
++    }
++}
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/SpeechTextSegmenter.java b/app/src/main/java/org/mozilla/fenix/dualscreen/SpeechTextSegmenter.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..d1b708eab0bfd9f4e4cec890b8057ad1a3e01d04
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/SpeechTextSegmenter.java
+@@ -0,0 +1,144 @@
++package org.mozilla.fenix.dualscreen;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/** Produces natural TTS request units without cutting ordinary sentences by length. */
++public final class SpeechTextSegmenter {
++    // This is only a last-resort transport guard for pathological text with no
++    // punctuation at all. Normal prose is split exclusively at punctuation.
++    static final int HARD_REQUEST_LIMIT = 800;
++    // The first cloud request controls perceived latency. Keep only the first
++    // natural clause in that request and let the normal sentence-sized queue
++    // continue behind it.
++    static final int FIRST_REQUEST_TARGET = 64;
++
++    private SpeechTextSegmenter() { }
++
++    public static List<String> split(String text) {
++        List<String> result = new ArrayList<>();
++        if (text == null || text.trim().isEmpty())
++            return result;
++        int start = skipWhitespace(text, 0);
++        for (int index = start; index < text.length(); index++) {
++            if (!isSpeechBoundary(text, index))
++                continue;
++            int end = consumeBoundarySuffix(text, index + 1);
++            appendBounded(result, text.substring(start, end).trim());
++            start = skipWhitespace(text, end);
++            index = start - 1;
++        }
++        if (start < text.length())
++            appendBounded(result, text.substring(start).trim());
++        prioritizeFirstRequest(result);
++        return result;
++    }
++
++    private static void prioritizeFirstRequest(List<String> result) {
++        if (result.isEmpty() || result.get(0).length() <= FIRST_REQUEST_TARGET)
++            return;
++        String first = result.remove(0);
++        int split = -1;
++        // Prefer a complete clause near the target instead of an arbitrary
++        // byte/character boundary. Minor punctuation has already been kept in
++        // the phrase by split(), so scan it again before falling back to space.
++        for (int index = 12; index < Math.min(first.length(), FIRST_REQUEST_TARGET); index++) {
++            char value = first.charAt(index);
++            if (isFirstRequestBoundary(first, index)) {
++                split = consumeBoundarySuffix(first, index + 1);
++                break;
++            }
++        }
++        if (split < 0)
++            split = lastWhitespaceBefore(first, 0, FIRST_REQUEST_TARGET);
++        if (split <= 0)
++            split = Math.min(FIRST_REQUEST_TARGET, first.length());
++        result.add(0, first.substring(split).trim());
++        result.add(0, first.substring(0, split).trim());
++    }
++
++    private static boolean isFirstRequestBoundary(String text, int index) {
++        char value = text.charAt(index);
++        if (isSpeechBoundary(text, index) || value == '，' || value == '、'
++                || value == '：' || value == ':' || value == ',') {
++            if (value == ',') {
++                return index == 0 || index + 1 >= text.length()
++                        || !Character.isDigit(text.charAt(index - 1))
++                        || !Character.isDigit(text.charAt(index + 1));
++            }
++            return true;
++        }
++        return false;
++    }
++
++    private static boolean isSpeechBoundary(String text, int index) {
++        char value = text.charAt(index);
++        if (value == '\n' || value == '。' || value == '！' || value == '？'
++                || value == '；' || value == '!' || value == '?' || value == ';')
++            return true;
++        if (value == '.') {
++            // Keep decimal numbers intact (3.14).
++            return index == 0 || index + 1 >= text.length()
++                    || !Character.isDigit(text.charAt(index - 1))
++                    || !Character.isDigit(text.charAt(index + 1));
++        }
++        return value == '…';
++    }
++
++    private static int consumeBoundarySuffix(String text, int offset) {
++        int end = offset;
++        while (end < text.length()) {
++            char value = text.charAt(end);
++            if (isRepeatedPunctuation(value) || isClosingMark(value))
++                end++;
++            else
++                break;
++        }
++        return end;
++    }
++
++    private static boolean isRepeatedPunctuation(char value) {
++        return value == '。' || value == '！' || value == '？' || value == '!'
++                || value == '?' || value == '.' || value == '…';
++    }
++
++    private static boolean isClosingMark(char value) {
++        return value == '”' || value == '’' || value == '"' || value == '\''
++                || value == ')' || value == '）' || value == ']' || value == '】'
++                || value == '》' || value == '〉' || value == '」' || value == '』';
++    }
++
++    private static int skipWhitespace(String text, int offset) {
++        int index = offset;
++        while (index < text.length() && Character.isWhitespace(text.charAt(index)))
++            index++;
++        return index;
++    }
++
++    private static void appendBounded(List<String> result, String phrase) {
++        if (phrase.isEmpty())
++            return;
++        int start = 0;
++        while (phrase.length() - start > HARD_REQUEST_LIMIT) {
++            int limit = start + HARD_REQUEST_LIMIT;
++            int split = lastWhitespaceBefore(phrase, start, limit);
++            if (split <= start)
++                split = limit; // Unavoidable only for an over-limit token.
++            String part = phrase.substring(start, split).trim();
++            if (!part.isEmpty())
++                result.add(part);
++            start = skipWhitespace(phrase, split);
++        }
++        String tail = phrase.substring(start).trim();
++        if (!tail.isEmpty())
++            result.add(tail);
++    }
++
++    private static int lastWhitespaceBefore(String text, int start, int limit) {
++        for (int index = limit; index > start; index--) {
++            if (Character.isWhitespace(text.charAt(index - 1)))
++                return index - 1;
++        }
++        return -1;
++    }
++}
+

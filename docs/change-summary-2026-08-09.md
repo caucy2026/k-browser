@@ -373,3 +373,16 @@ D2 每轮均非黑屏；日志显示冷启动收到 `1920x2560` 首帧，复用�
   退出；日志显示双屏收到 `1920×2560` 首帧、单屏收到 `1920×1280` 首帧，未发现浏览器
   `FATAL EXCEPTION`。
 - 双屏/单屏完整技术说明与验收矩阵已独立整理到 `docs/dual-single-screen-architecture.md`。
+
+## 13. 网页语音播报（2026-08-15）
+
+- 新增进程级网页朗读控制器、内置 GeckoView 内容扩展、自然分段器、讯飞 AIUI 流式 PCM 引擎和 Android
+  系统 TTS 降级；双屏两 Activity 共用一个播放器。
+- 从当前可见语义块开始，当前段高亮跟随，只预取下一段；暂停时停流并重建当前段，停止/换页/退出使用
+  generation 屏障阻止迟到回调。
+- 凭据只从系统 `Settings.Global["iflytek_params"]` 读取，不硬编码、不写日志；只在用户主动朗读时外发正文。
+- 真机修复内容脚本缺少 `nativeMessagingFromContent`、`geckoViewAddons` 导致“扩展已安装但无法连接”的问题；
+  内部主页另走原生 HTML 纯文本兜底。
+- 62 W3C 公开页面验证：4022 字/50 段，首 PCM 361ms，预取、高亮、暂停续播、停止和换页停止均通过；
+  主页 189 字/6 段，首 PCM 355ms。完整技术说明见 `docs/webpage-read-aloud.md`。
+- 改动整理为 `0031-add-webpage-read-aloud.patch`，补丁入口更新为 0001–0020 + 0025–0031。
