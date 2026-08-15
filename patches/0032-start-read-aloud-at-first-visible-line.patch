@@ -1,0 +1,169 @@
+diff --git a/app/src/main/assets/kbrowser_tts/content.js b/app/src/main/assets/kbrowser_tts/content.js
+index bf325d1..426ccb2 100644
+--- a/app/src/main/assets/kbrowser_tts/content.js
++++ b/app/src/main/assets/kbrowser_tts/content.js
+@@ -2,16 +2,83 @@
+   "use strict";
+ 
+   const MAX_TEXT_CHARS = 500000;
++  // The browser toolbar overlays the top of the shared Gecko surface. The
++  // first spoken character must therefore be on the first line that is
++  // actually visible below the Display 2 toolbar, not merely inside a partly
++  // visible paragraph whose beginning has already scrolled away.
++  const CONTENT_TOP_PX = 160;
+   const BLOCK_SELECTOR = [
+     "h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote",
+     "pre", "td", "th", "figcaption", "article", "main"
+   ].join(",");
+   let highlighted = null;
++  let extractionAnchorElement = null;
++  let extractionAnchorIndex = 0;
++  let followElement = null;
++  let followIndex = 0;
++  let followNeedle = "";
++  let lastFollowStart = 0;
+ 
+   function normalize(value) {
+     return (value || "").replace(/\s+/g, " ").trim();
+   }
+ 
++  function buildTextMap(element) {
++    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
++    const positions = [];
++    let normalized = "";
++    let previousSpace = true;
++    let node;
++    while ((node = walker.nextNode())) {
++      const value = node.nodeValue || "";
++      for (let offset = 0; offset < value.length; offset++) {
++        const character = value[offset];
++        if (/\s/.test(character)) {
++          if (!previousSpace && normalized.length > 0) {
++            normalized += " ";
++            positions.push({ node, offset });
++          }
++          previousSpace = true;
++        } else {
++          normalized += character;
++          positions.push({ node, offset });
++          previousSpace = false;
++        }
++      }
++    }
++    if (normalized.endsWith(" ")) {
++      normalized = normalized.slice(0, -1);
++      positions.pop();
++    }
++    return { normalized, positions };
++  }
++
++  function rangeForMappedText(mapping, start, length) {
++    if (start < 0 || start >= mapping.positions.length || length <= 0) return null;
++    const endIndex = Math.min(mapping.positions.length - 1, start + length - 1);
++    const first = mapping.positions[start];
++    const last = mapping.positions[endIndex];
++    const range = document.createRange();
++    range.setStart(first.node, first.offset);
++    range.setEnd(last.node, Math.min(last.node.length, last.offset + 1));
++    return range;
++  }
++
++  function firstActuallyVisibleText(block) {
++    if (block.top >= CONTENT_TOP_PX) return { text: block.text, startIndex: 0 };
++    const mapping = buildTextMap(block.element);
++    const scanLimit = Math.min(mapping.positions.length, 8000);
++    for (let index = 0; index < scanLimit; index++) {
++      if (/\s/.test(mapping.normalized[index] || "")) continue;
++      const range = rangeForMappedText(mapping, index, 1);
++      const rect = range && range.getClientRects()[0];
++      if (rect && rect.bottom > CONTENT_TOP_PX && rect.top < window.innerHeight) {
++        return { text: mapping.normalized.slice(index).trim(), startIndex: index };
++      }
++    }
++    return { text: block.text, startIndex: 0 };
++  }
++
+   function isReadable(element) {
+     if (!element || !element.isConnected) return false;
+     if (element.closest("script,style,noscript,template,[aria-hidden='true']")) return false;
+@@ -44,11 +111,18 @@
+ 
+   function extractFromViewport() {
+     const blocks = collectBlocks();
+-    let start = blocks.findIndex(block => block.bottom >= 0);
++    let start = blocks.findIndex(block => block.bottom > CONTENT_TOP_PX);
+     if (start < 0) start = 0;
++    const firstVisible = blocks[start] ? firstActuallyVisibleText(blocks[start]) : null;
++    extractionAnchorElement = blocks[start]?.element || null;
++    extractionAnchorIndex = firstVisible?.startIndex || 0;
++    followElement = null;
++    followIndex = 0;
++    followNeedle = "";
++    lastFollowStart = 0;
+     let result = "";
+     for (let index = start; index < blocks.length; index++) {
+-      const next = blocks[index].text;
++      const next = index === start ? firstVisible?.text : blocks[index].text;
+       if (!next) continue;
+       if (result.length + next.length + 1 > MAX_TEXT_CHARS) {
+         result += "\n" + next.slice(0, Math.max(0, MAX_TEXT_CHARS - result.length - 1));
+@@ -69,20 +143,53 @@
+ 
+   function follow(text) {
+     clearHighlight();
+-    const needle = normalize(text).slice(0, 36);
++    const normalizedText = normalize(text);
++    const needle = normalizedText.slice(0, 36);
+     if (!needle) return;
+     const blocks = collectBlocks();
+-    const target = blocks.find(block => block.text.includes(needle)) ||
+-      blocks.find(block => needle.includes(block.text.slice(0, 24)));
++    const currentBlockIndex = blocks.findIndex(block => block.element === followElement);
++    const anchorBlockIndex = blocks.findIndex(block => block.element === extractionAnchorElement);
++    const currentBlock = currentBlockIndex >= 0 ? blocks[currentBlockIndex] : null;
++    const repeatedChunk = currentBlock && needle === followNeedle;
++    const continuingBlock = currentBlock &&
++      currentBlock.text.indexOf(needle, followIndex) >= 0;
++    const searchStartBlock = currentBlockIndex >= 0 ?
++      currentBlockIndex + 1 : Math.max(0, anchorBlockIndex);
++    const target = (repeatedChunk || continuingBlock ? currentBlock : null) ||
++      blocks.slice(searchStartBlock).find(block => block.text.includes(needle)) ||
++      blocks.slice(searchStartBlock).find(block => needle.includes(block.text.slice(0, 24)));
+     if (!target) return;
+     highlighted = target.element;
+     highlighted.style.setProperty("background-color", "#EAF2FF", "important");
+     highlighted.style.setProperty("box-shadow", "inset 4px 0 #1F69E0", "important");
+     highlighted.style.setProperty("scroll-margin-top", "180px", "important");
+-    const rect = highlighted.getBoundingClientRect();
+-    if (rect.top < 120 || rect.bottom > window.innerHeight - 100) {
+-      highlighted.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
++    const mapping = buildTextMap(highlighted);
++    const anchorIndex = highlighted === extractionAnchorElement ? extractionAnchorIndex : 0;
++    let textIndex;
++    if (highlighted === followElement && needle === followNeedle) {
++      textIndex = lastFollowStart;
++    } else {
++      const searchStart = highlighted === followElement ?
++        Math.max(anchorIndex, followIndex) : anchorIndex;
++      textIndex = mapping.normalized.indexOf(needle, searchStart);
++      if (textIndex < 0) textIndex = mapping.normalized.indexOf(needle, anchorIndex);
++      followElement = highlighted;
++      followIndex = textIndex;
++      followNeedle = needle;
++      lastFollowStart = textIndex;
++    }
++    const textRange = rangeForMappedText(mapping, textIndex, needle.length);
++    const rect = textRange && textRange.getClientRects()[0];
++    if (rect && (rect.top < CONTENT_TOP_PX || rect.bottom > window.innerHeight - 100)) {
++      const destination = Math.max(CONTENT_TOP_PX + 80, window.innerHeight * 0.3);
++      window.scrollBy({ top: rect.top - destination, behavior: "smooth" });
++    } else if (!rect) {
++      const elementRect = highlighted.getBoundingClientRect();
++      if (elementRect.bottom <= CONTENT_TOP_PX || elementRect.top >= window.innerHeight - 100) {
++        highlighted.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
++      }
+     }
++    if (textIndex >= 0) followIndex = textIndex + normalizedText.length;
+   }
+ 
+   function connect() {
