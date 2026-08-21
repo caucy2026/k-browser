@@ -19,6 +19,7 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 - 当前正式版本为 `1.2.4`，产物为
   `bin/DualScreenBrowser-v1.2.4-arm64-release.apk`；包含双屏网页朗读、D2 可见首行起读、
   首页开源项目标签、单行标题和单行收藏标签，并使用 KEMI 统一正式证书签名。
+- 完整发布记录和 63 真机验收结论见 `docs/release-1.2.4.md`。
 - KEMI 构建不显示 Firefox/Iceraven 注册、首次引导、Pocket/赞助内容或默认浏览器推广；
   Gecko 仅作为开源网页引擎保留。
 
