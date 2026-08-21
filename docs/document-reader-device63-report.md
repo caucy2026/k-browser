@@ -8,15 +8,16 @@
 
 ## 1. 当前结论
 
-- 本地正式签名候选 APK 已构建成功，SHA-256 为
-  `511671213748781ac509f17de737dff5e116b3d528857371f9901aa6c2c73fc7`。
+- 本地正式签名 APK 已构建成功，SHA-256 为
+  `4d3ced11b192982739043b4407128ef915765eda2a3520140d54f0de01215b70`，构建清单源码提交为
+  `9a13d1df4f5775501ab7880ce10f5bcc92c94c56`。
 - 49 个格式样例在 Display 2 单屏诊断模式全部打开；48 个离线转换格式逐项产生独立
   `DOCUMENT_READY` 和 `DOCUMENT_LOADED loopback=true`，PDF 由 Gecko 原生查看器实际显示。
-- 48 个转换样例解析耗时：最小 7ms、中位数 9ms、平均 16.6ms、最大 121ms（XLSX），均明显低于规范门槛。
+- 48 个转换样例解析耗时：最小 6ms、中位数 9ms、平均 15.3ms、最大 86ms（XLSX），均明显低于规范门槛。
 - Markdown 实测可以滚动，滚动前后截图 SHA-256 不同；朗读从当前页面提取 6158 字，按标点切为
   302 段并启动第一段，下一段预取成功。
-- 最终样例运行时总 PSS 为 196400KiB；Markdown + 朗读场景为 197731KiB。相对此前干净单屏主页
-  177871KiB 的增量约 19.4MiB，低于 120MiB 门槛。
+- 最终样例运行时总 PSS 为 196531KiB；Markdown + 朗读场景为 196831KiB。相对此前干净单屏主页
+  177871KiB 的增量分别约 18.2MiB 和 18.5MiB，低于 120MiB 门槛。
 - 49 项测试未发现浏览器 `FATAL EXCEPTION`、ANR、`parse failed` 或 `read failed`。
 - 测试期间 Display 0 的 NativeGPU 始终保持前台，单屏诊断没有抢占或停止其他项目。
 - 新文档内容的完整 D2/D0 拼接、两屏分别滚动和同步退出仍需在整机双屏空闲窗口复测；本报告在完成前
@@ -31,7 +32,7 @@
 | 配置 | JSON、XML、YAML/YML、TOML、INI、properties | JSON 美化；其余安全文本/结构阅读 |
 | 表格文本 | CSV、TSV | 表格生成成功；行列有安全上限 |
 | 网页 | HTML、XHTML | 本地脚本被清理，不执行样例中的不可信脚本 |
-| 现代 Office | DOCX、XLSX、PPTX | 正文、工作表与幻灯片文字提取成功；XLSX 最慢 121ms |
+| 现代 Office | DOCX、XLSX、PPTX | 正文、工作表与幻灯片文字提取成功；XLSX 最慢 86ms |
 | ODF | ODT、ODS、ODP | `content.xml` 离线提取成功 |
 | 电子书 | EPUB、RTF、MOBI | EPUB 按 spine，RTF Unicode，未加密 PalmDOC/MOBI 成功 |
 | 图表源码 | Mermaid、PlantUML | 源码可读、可复制/朗读；不访问在线渲染服务 |
@@ -41,13 +42,13 @@
 逐项解析耗时（ms）：
 
 ```text
-c 9, cpp 7, css 7, csv 12, doc 41, docx 15, epub 13, go 8,
-graphql 17, h 7, hpp 24, html 12, ini 7, java 9, js 7, json 10,
-jsx 8, kt 8, kts 8, log 7, markdown 56, md 51, mmd 7, mobi 10,
-odp 28, ods 15, odt 16, ppt 40, pptx 17, properties 11, puml 7,
-py 8, rs 8, rtf 20, scss 8, sh 14, sql 8, toml 8, ts 11,
-tsv 9, tsx 13, txt 10, xhtml 7, xls 38, xlsx 121, xml 7,
-yaml 8, yml 7; PDF 使用原生查看器，不经过转换计时。
+c 9, cpp 7, css 7, csv 19, doc 35, docx 20, epub 12, go 7,
+graphql 8, h 10, hpp 16, html 7, ini 8, java 7, js 7, json 8,
+jsx 7, kt 6, kts 8, log 10, markdown 48, md 60, mmd 15, mobi 10,
+odp 12, ods 13, odt 11, ppt 47, pptx 15, properties 9, puml 8,
+py 11, rs 10, rtf 20, scss 8, sh 7, sql 7, toml 10, ts 9,
+tsv 8, tsx 7, txt 18, xhtml 8, xls 34, xlsx 86, xml 7,
+yaml 11, yml 6; PDF 使用原生查看器，不经过转换计时。
 ```
 
 ## 3. 性能和硬件优化
