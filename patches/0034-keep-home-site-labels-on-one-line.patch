@@ -1,0 +1,13 @@
+diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dual_screen_home.html
+index f15a63b..2e49989 100644
+--- a/app/src/main/assets/dual_screen_home.html
++++ b/app/src/main/assets/dual_screen_home.html
+@@ -14,7 +14,7 @@
+     input { flex: 1; min-width: 0; padding: 0 22px; border: 1px solid #cbd5e3; border-radius: 12px 0 0 12px; background: #fff; color: #172033; font: inherit; outline: none; }
+     button { width: 108px; border: 0; border-radius: 0 12px 12px 0; background: #1456c0; color: #fff; font: inherit; }
+     .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+-    a { display: block; min-height: 112px; padding: 24px 20px; border: 1px solid #d9e2f0; border-radius: 14px; background: #fff; color: #164ea3; text-decoration: none; }
++    a { display: block; min-width: 0; min-height: 112px; padding: 24px 16px; overflow: hidden; border: 1px solid #d9e2f0; border-radius: 14px; background: #fff; color: #164ea3; text-decoration: none; font-size: 22px; white-space: nowrap; text-overflow: ellipsis; }
+     a span { display: block; color: #7a8495; font-size: 21px; }
+     a:focus, a:active, button:focus { outline: 4px solid #8ab4f8; outline-offset: 2px; }
+     .guide { margin-top: 44px; padding: 28px; border-radius: 14px; background: #e6efff; color: #17365f; font-weight: 600; }

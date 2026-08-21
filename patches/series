@@ -29,3 +29,4 @@ patches/0030-route-launches-across-displays.patch
 patches/0031-add-webpage-read-aloud.patch
 patches/0032-start-read-aloud-at-first-visible-line.patch
 patches/0033-add-kemi-project-ranking-sites.patch
+patches/0034-keep-home-site-labels-on-one-line.patch
