@@ -2,15 +2,15 @@
 
 测试日期：2026-08-22
 
-设备：`192.168.3.63:5555`，Android 12 / arm64 / Mali-G52
+设备：`192.168.3.63:5555`（单屏矩阵）与 `192.168.3.62:5555`（完整双屏），Android 12 / arm64 / Mali-G52
 
 单屏：`1920×1280@60Hz`；双屏目标画布：`1920×2560@60Hz`
 
 ## 1. 当前结论
 
 - 本地正式签名 APK 已构建成功，SHA-256 为
-  `4d3ced11b192982739043b4407128ef915765eda2a3520140d54f0de01215b70`，构建清单源码提交为
-  `9a13d1df4f5775501ab7880ce10f5bcc92c94c56`。
+  `c77706a256deaf0bacee607b31f15d96c36652b9aef0569752b355e7fef4c7c3`，构建清单源码提交为
+  `1339471a438ed28d75e71187c13a720fb0d19d0f`。
 - 49 个格式样例在 Display 2 单屏诊断模式全部打开；48 个离线转换格式逐项产生独立
   `DOCUMENT_READY` 和 `DOCUMENT_LOADED loopback=true`，PDF 由 Gecko 原生查看器实际显示。
 - 48 个转换样例解析耗时：最小 6ms、中位数 9ms、平均 15.3ms、最大 86ms（XLSX），均明显低于规范门槛。
@@ -20,8 +20,13 @@
   177871KiB 的增量分别约 18.2MiB 和 18.5MiB，低于 120MiB 门槛。
 - 49 项测试未发现浏览器 `FATAL EXCEPTION`、ANR、`parse failed` 或 `read failed`。
 - 测试期间 Display 0 的 NativeGPU 始终保持前台，单屏诊断没有抢占或停止其他项目。
-- 新文档内容的完整 D2/D0 拼接、两屏分别滚动和同步退出仍需在整机双屏空闲窗口复测；本报告在完成前
-  不把这一项标记为通过。
+- 最终正式包在 62 完成 49 格式双屏矩阵：48 个转换格式全部加载，PDF 原生显示；解析最小 5ms、
+  中位数 7ms、平均 13.9ms、最大 75ms，总 PSS 212090KiB。
+- 双屏为同一 `1920×2560` Gecko 帧的连续裁切：D2 滚动后显示 YML 第 3–19 行，D0 紧接第 20–38 行；
+  D0 再滚动后 D2 显示第 18–33 行，D0 紧接第 34–52 行，四张截图哈希均不同，没有镜像或双页面抖动。
+- Markdown 冷启动日志同时出现 `Bound TOP output`、`Bound BOTTOM output` 和
+  `Received first 1920x2560 Gecko frame`；朗读切分 308 段并连续播放/预取。从 D2 退出后 D0/D2
+  两个浏览器 Activity 均消失。单双屏文档闭环验收通过。
 
 ## 2. 格式结果
 
@@ -76,6 +81,20 @@ yaml 11, yml 6; PDF 使用原生查看器，不经过转换计时。
 - 49 份 `*-document.log`：逐项隔离后的解析/加载结果；
 - `logcat.txt`：崩溃与 ANR 检查。
 
+62 完整双屏证据保存在 `artifacts/document-reader-device62-dual/`：
+
+- 49 份 `*-document.log`：48 个转换格式 `DOCUMENT_READY`，PDF 走 Gecko 原生查看器；
+- `display2-after-d2-scroll.png` / `display0-after-d2-scroll.png`：D2 操作后第 3–19 / 20–38 行连续；
+- `display2-after-d0-scroll.png` / `display0-after-d0-scroll.png`：D0 操作后第 18–33 / 34–52 行连续；
+- `md-initial-display2.png` / `md-initial-display0.png`：Markdown 顶部与其下一段相邻画面；
+- `md-compositor-tts.log`：两块 Surface 绑定、`1920×2560` 首帧及 308 段朗读；
+- `md-dual-activities.txt` / `md-after-exit-activities.txt`：D2/D0 配对运行及统一退出；
+- `meminfo.txt`、`logcat.txt`：PSS、崩溃与 ANR 检查。
+
+另做了两个预期失败边界样例：100 字节损坏 DOCX 返回错误页并记录 `EOFException`，33MiB TXT 返回
+32MiB 上限错误页；两者均未崩溃、未 ANR。负向样例日志中的 `parse/read failed` 是设计内错误页证据，
+不计入上述 49 个有效格式样例。最终正式包已忽略客户端提前关闭连接产生的预期 Socket 异常日志。
+
 ## 5. 自动复测
 
 ```sh
@@ -87,6 +106,11 @@ bash scripts/test-documents-device.sh \
 # 只有 D0/D2 同时空闲时执行，脚本发现其他前台应用会立即拒绝抢占：
 bash scripts/test-documents-device.sh \
   192.168.3.63:5555 \
+  bin/DualScreenBrowser-v1.3.0-arm64-release.apk dual
+
+# 中途因 ADB/logd 抖动需要续测时，从指定扩展名继续：
+KBROWSER_FROM_EXT=tsv bash scripts/test-documents-device.sh \
+  192.168.3.62:5555 \
   bin/DualScreenBrowser-v1.3.0-arm64-release.apk dual
 ```
 

@@ -7,9 +7,13 @@ ADB="$PROJECT_DIR/.tools/platform-tools/adb"
 SERIAL=${1:-192.168.3.63:5555}
 APK=${2:-"$PROJECT_DIR/bin/DualScreenBrowser-v1.3.0-arm64-release.apk"}
 MODE=${3:-dual}
+FROM_EXT=${KBROWSER_FROM_EXT:-}
 FIXTURES="$PROJECT_DIR/artifacts/document-fixtures"
-RESULTS="$PROJECT_DIR/artifacts/document-reader-device63-$MODE"
+DEVICE_HOST=${SERIAL%%:*}
+DEVICE_SUFFIX=${DEVICE_HOST##*.}
+RESULTS="$PROJECT_DIR/artifacts/document-reader-device$DEVICE_SUFFIX-$MODE"
 PACKAGE=io.github.forkmaintainers.iceraven
+STARTED=false
 
 mkdir -p "$RESULTS"
 python3 "$PROJECT_DIR/scripts/generate-document-fixtures.py"
@@ -61,6 +65,10 @@ mime_for() {
 for FILE in "$FIXTURES"/*; do
     NAME=$(basename "$FILE")
     EXT=${NAME##*.}
+    if [ -n "$FROM_EXT" ] && [ "$STARTED" = false ]; then
+        [ "$EXT" = "$FROM_EXT" ] || continue
+        STARTED=true
+    fi
     MIME=$(mime_for "$EXT")
     PRIVATE_FILE="$PRIVATE_FIXTURES/$NAME"
     "$ADB" -s "$SERIAL" shell su 0 cp "/sdcard/Download/kbrowser-documents/$NAME" "$PRIVATE_FILE"

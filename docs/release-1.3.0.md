@@ -9,8 +9,8 @@
 - 架构：`arm64-v8a`
 - 可复现补丁范围：`0001–0020 + 0025–0035`
 - APK：`bin/DualScreenBrowser-v1.3.0-arm64-release.apk`
-- 源码提交：`9a13d1df4f5775501ab7880ce10f5bcc92c94c56`
-- 正式 APK SHA-256：`4d3ced11b192982739043b4407128ef915765eda2a3520140d54f0de01215b70`
+- 源码提交：`1339471a438ed28d75e71187c13a720fb0d19d0f`
+- 正式 APK SHA-256：`c77706a256deaf0bacee607b31f15d96c36652b9aef0569752b355e7fef4c7c3`
 
 ## 新增能力
 
@@ -37,10 +37,10 @@
 
 63 副屏在不抢占主屏 NativeGPU 的前提下完成 49 个格式样例。48 个离线转换格式逐项日志隔离通过，
 PDF 原生显示，解析中位数 9ms、最大 86ms；Markdown 实际滚动、朗读提取 6158 字和下一段预取通过。
-详细证据与能力边界见 `docs/document-reader-device63-report.md`。
-
-整机 D0/D2 同时空闲后，还需执行报告中的 `dual` 命令补齐本次文档内容的双屏拼接取证；测试脚本会在
-检测到其他前台应用时主动退出，不能用抢占其他项目换取假闭环。
+62 整机完成相同 49 格式双屏矩阵，解析中位数 7ms、最大 75ms、总 PSS 212090KiB；D2/D0 显示同一
+`1920×2560` 页面相邻区域，两屏分别滚动后行号仍连续，无镜像和反馈抖动。Markdown 的 TOP/BOTTOM
+Surface、首帧、308 段朗读及 D2 退出联动关闭 D0 均通过，未发现崩溃或 ANR。详细证据与能力边界见
+`docs/document-reader-device63-report.md`。
 
 ## 校验命令
 
@@ -49,4 +49,6 @@ PDF 原生显示，解析中位数 9ms、最大 86ms；Markdown 实际滚动、�
 shasum -a 256 bin/DualScreenBrowser-v1.3.0-arm64-release.apk
 bash scripts/test-documents-device.sh \
   192.168.3.63:5555 bin/DualScreenBrowser-v1.3.0-arm64-release.apk single
+bash scripts/test-documents-device.sh \
+  192.168.3.62:5555 bin/DualScreenBrowser-v1.3.0-arm64-release.apk dual
 ```
