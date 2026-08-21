@@ -349,7 +349,7 @@
          compositor?.stop()
 --- /dev/null
 +++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt
-@@ -0,0 +1,622 @@
+@@ -0,0 +1,631 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -787,39 +787,48 @@
 +        require(encryption == 0) { "加密/DRM MOBI 不支持" }
 +        require(compression == 1 || compression == 2) { "不支持的 MOBI 压缩方式 $compression" }
 +        val output = ByteArrayOutputStream()
++        val targetBytes = textLength.coerceIn(0, MAX_TEXT_CHARS * 4)
 +        for (index in 1..textRecords.coerceAtMost(offsets.size - 1)) {
 +            val end = offsets.getOrElse(index + 1) { bytes.size }
 +            val record = bytes.copyOfRange(offsets[index], end)
-+            output.write(if (compression == 2) decompressPalmDoc(record) else record)
-+            if (output.size() >= textLength.coerceAtMost(MAX_INPUT_BYTES)) break
++            val decoded = if (compression == 2) decompressPalmDoc(record) else record
++            val remaining = targetBytes - output.size()
++            if (remaining <= 0) break
++            output.write(decoded, 0, decoded.size.coerceAtMost(remaining))
 +        }
-+        return sanitizePlainBook(output.toByteArray().copyOf(textLength.coerceAtMost(output.size())))
++        return sanitizePlainBook(output.toByteArray())
 +    }
 +
 +    private fun decompressPalmDoc(input: ByteArray): ByteArray {
-+        val output = ByteArrayOutputStream()
++        // PalmDOC back-references are allowed to overlap the bytes currently being produced.
++        // A fixed incremental buffer handles that in O(n), unlike rebuilding a full snapshot for
++        // every pair, and bounds a hostile book's temporary memory on the target vehicle.
++        val output = ByteArray(MAX_TEXT_CHARS * 4)
++        var outputSize = 0
++        fun append(value: Int) {
++            if (outputSize < output.size) output[outputSize++] = value.toByte()
++        }
 +        var index = 0
-+        while (index < input.size && output.size() < MAX_INPUT_BYTES) {
++        while (index < input.size && outputSize < output.size) {
 +            val value = input[index].toInt() and 0xff
 +            index++
 +            when {
-+                value == 0 -> output.write(0)
-+                value in 1..8 -> repeat(value.coerceAtMost(input.size - index)) { output.write(input[index++].toInt()) }
-+                value <= 0x7f -> output.write(value)
-+                value >= 0xc0 -> { output.write(' '.code); output.write(value xor 0x80) }
++                value == 0 -> append(0)
++                value in 1..8 -> repeat(value.coerceAtMost(input.size - index)) { append(input[index++].toInt()) }
++                value <= 0x7f -> append(value)
++                value >= 0xc0 -> { append(' '.code); append(value xor 0x80) }
 +                index < input.size -> {
 +                    val pair = (value shl 8) or (input[index++].toInt() and 0xff)
 +                    val distance = (pair shr 3) and 0x7ff
 +                    val length = (pair and 7) + 3
-+                    val snapshot = output.toByteArray()
-+                    repeat(length) { position ->
-+                        val source = snapshot.size - distance + (position % distance.coerceAtLeast(1))
-+                        output.write(if (source in snapshot.indices) snapshot[source].toInt() else ' '.code)
++                    repeat(length) {
++                        val source = outputSize - distance
++                        append(if (source in 0 until outputSize) output[source].toInt() else ' '.code)
 +                    }
 +                }
 +            }
 +        }
-+        return output.toByteArray()
++        return output.copyOf(outputSize)
 +    }
 +
 +    private fun sanitizePlainBook(bytes: ByteArray): String = decodeText(bytes)
