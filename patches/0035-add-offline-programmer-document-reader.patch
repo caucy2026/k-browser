@@ -1,0 +1,974 @@
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -513,12 +513,39 @@
+         <activity
+             android:name=".dualscreen.DualScreenLaunchActivity"
+             android:excludeFromRecents="true"
+-            android:exported="false"
++            android:exported="true"
+             android:launchMode="singleTask"
+             android:noHistory="true"
+             android:screenOrientation="landscape"
+             android:taskAffinity="${applicationId}.dualscreen.launcher"
+-            android:theme="@style/Theme.Transparent" />
++            android:theme="@style/Theme.Transparent">
++            <intent-filter>
++                <action android:name="android.intent.action.VIEW" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <category android:name="android.intent.category.OPENABLE" />
++                <data android:scheme="content" />
++                <data android:scheme="file" />
++                <data android:mimeType="text/*" />
++                <data android:mimeType="application/json" />
++                <data android:mimeType="application/xml" />
++                <data android:mimeType="application/xhtml+xml" />
++                <data android:mimeType="application/yaml" />
++                <data android:mimeType="application/rtf" />
++                <data android:mimeType="application/pdf" />
++                <data android:mimeType="application/msword" />
++                <data android:mimeType="application/vnd.ms-excel" />
++                <data android:mimeType="application/vnd.ms-powerpoint" />
++                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
++                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
++                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
++                <data android:mimeType="application/vnd.oasis.opendocument.text" />
++                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
++                <data android:mimeType="application/vnd.oasis.opendocument.presentation" />
++                <data android:mimeType="application/epub+zip" />
++                <data android:mimeType="application/x-mobipocket-ebook" />
++                <data android:mimeType="application/octet-stream" />
++            </intent-filter>
++        </activity>
+ 
+         <activity
+             android:name=".dualscreen.DualScreenBrowserActivity"
+@@ -706,14 +733,6 @@
+                 <data android:scheme="https" />
+             </intent-filter>
+ 
+-            <intent-filter>
+-                <action android:name="android.intent.action.VIEW" />
+-                <category android:name="android.intent.category.BROWSABLE" />
+-                <category android:name="android.intent.category.DEFAULT" />
+-                <data android:mimeType="application/pdf" />
+-                <data android:scheme="content" />
+-            </intent-filter>
+-
+             <meta-data
+                 android:name="com.android.systemui.action_assist_icon"
+                 android:resource="@mipmap/ic_launcher" />
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenLaunchActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenLaunchActivity.kt
+@@ -13,6 +13,7 @@
+ import android.os.Looper
+ import android.util.Log
+ import android.view.Display
++import kotlin.concurrent.thread
+ 
+ /**
+  * Launcher-only trampoline for the dual-screen browser.
+@@ -28,9 +29,17 @@
+         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+ 
+         val originDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
++        val singleScreenDiagnostic = intent.getBooleanExtra(EXTRA_SINGLE_SCREEN_DIAGNOSTIC, false)
+         val appContext = applicationContext
+         val controllerIntent = Intent(intent).apply {
+-            setClass(appContext, DualScreenBrowserActivity::class.java)
++            setClass(
++                appContext,
++                if (singleScreenDiagnostic) {
++                    SingleScreenBrowserActivity::class.java
++                } else {
++                    DualScreenBrowserActivity::class.java
++                },
++            )
+             addFlags(
+                 Intent.FLAG_ACTIVITY_NEW_TASK or
+                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
+@@ -38,11 +47,55 @@
+             )
+         }
+         val controllerOptions = ActivityOptions.makeBasic().apply {
+-            launchDisplayId = Display.DEFAULT_DISPLAY
++            launchDisplayId = if (singleScreenDiagnostic) originDisplayId else Display.DEFAULT_DISPLAY
+         }.toBundle()
+ 
+         Log.i(TAG, "Route dual-screen launch from display $originDisplayId to display 0")
+-        if (originDisplayId == Display.DEFAULT_DISPLAY) {
++        if (DocumentReader.isLocalDocument(intent) && !isPdf(intent)) {
++            // Parsing modern Office/ODF/EPUB containers can take hundreds of milliseconds.
++            // Keep that work off the UI thread and pass only a private cache path through Binder.
++            thread(name = "KBrowserDocumentParser") {
++                val result = runCatching { DocumentReader.prepare(appContext, intent) }
++                MAIN_HANDLER.post {
++                    result.onSuccess { document ->
++                        controllerIntent.apply {
++                            data = null
++                            putExtra(DocumentReader.EXTRA_CACHE_PATH, document.cachePath)
++                            putExtra(DocumentReader.EXTRA_TITLE, document.title)
++                            putExtra(DocumentReader.EXTRA_FORMAT, document.format)
++                            putExtra(DocumentReader.EXTRA_PARSE_MS, document.parseMs)
++                        }
++                    }.onFailure { error ->
++                        Log.e(TAG, "Document preparation failed", error)
++                    }
++                    startController(
++                        originDisplayId,
++                        singleScreenDiagnostic,
++                        appContext,
++                        controllerIntent,
++                        controllerOptions,
++                    )
++                }
++            }
++            return
++        }
++        startController(
++            originDisplayId,
++            singleScreenDiagnostic,
++            appContext,
++            controllerIntent,
++            controllerOptions,
++        )
++    }
++
++    private fun startController(
++        originDisplayId: Int,
++        singleScreenDiagnostic: Boolean,
++        appContext: android.content.Context,
++        controllerIntent: Intent,
++        controllerOptions: Bundle,
++    ) {
++        if (singleScreenDiagnostic || originDisplayId == Display.DEFAULT_DISPLAY) {
+             appContext.startActivity(controllerIntent, controllerOptions)
+             finishAndRemoveTask()
+             return
+@@ -61,8 +114,13 @@
+         )
+     }
+ 
++    private fun isPdf(intent: Intent): Boolean =
++        intent.type.equals("application/pdf", ignoreCase = true) ||
++            intent.data?.lastPathSegment?.endsWith(".pdf", ignoreCase = true) == true
++
+     private companion object {
+         const val TAG = "KBrowserLaunch"
++        const val EXTRA_SINGLE_SCREEN_DIAGNOSTIC = "kbrowser.document.singleScreenDiagnostic"
+         const val SECONDARY_DISPLAY_RELEASE_DELAY_MS = 400L
+         val MAIN_HANDLER = Handler(Looper.getMainLooper())
+     }
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -113,7 +113,9 @@
+         configureTargetHardwareWindow()
+         val url = intent.getStringExtra(EXTRA_URL)
+             ?: intent.data?.getQueryParameter("url")
++            ?: intent.data?.toString()?.takeIf { intent.action == Intent.ACTION_VIEW }
+             ?: DEFAULT_URL
++        val documentPath = intent.getStringExtra(DocumentReader.EXTRA_CACHE_PATH)
+ 
+         browserSurface = GeckoInputSurface(this).apply {
+             layoutParams = ViewGroup.LayoutParams(
+@@ -179,8 +181,8 @@
+             cookieBannerHandlingGlobalRules = true
+         }
+ 
+-        DualScreenCoordinator.attach(this, url)
+-        if (!isTopDisplay) launchTopDisplay(url)
++        DualScreenCoordinator.attach(this, url, documentPath)
++        if (!isTopDisplay) launchTopDisplay(url, documentPath)
+     }
+ 
+     override fun onNewIntent(intent: Intent) {
+@@ -188,10 +190,12 @@
+         setIntent(intent)
+         val url = intent.getStringExtra(EXTRA_URL)
+             ?: intent.data?.getQueryParameter("url")
++            ?: intent.data?.toString()?.takeIf { intent.action == Intent.ACTION_VIEW }
+             ?: DualScreenCoordinator.currentUrl()
+-        DualScreenCoordinator.attach(this, url)
++        val documentPath = intent.getStringExtra(DocumentReader.EXTRA_CACHE_PATH)
++        DualScreenCoordinator.attach(this, url, documentPath)
+         registerCurrentSurface()
+-        if (!isTopDisplay) launchTopDisplay(url)
++        if (!isTopDisplay) launchTopDisplay(url, documentPath)
+     }
+ 
+     override fun onResume() {
+@@ -690,13 +694,20 @@
+         }
+     }
+ 
+-    private fun launchTopDisplay(url: String) {
++    private fun launchTopDisplay(url: String, documentPath: String? = null) {
+         val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+         val secondary = manager.displays.firstOrNull { it.displayId == TARGET_TOP_DISPLAY_ID }
+             ?: manager.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+             ?: return
+         val launchIntent = Intent(this, DualScreenTopActivity::class.java).apply {
+             putExtra(EXTRA_URL, url)
++            documentPath?.let { putExtra(DocumentReader.EXTRA_CACHE_PATH, it) }
++            intent.getStringExtra(DocumentReader.EXTRA_TITLE)?.let {
++                putExtra(DocumentReader.EXTRA_TITLE, it)
++            }
++            intent.getStringExtra(DocumentReader.EXTRA_FORMAT)?.let {
++                putExtra(DocumentReader.EXTRA_FORMAT, it)
++            }
+             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+         }
+         val options = ActivityOptions.makeBasic().apply {
+@@ -789,6 +800,7 @@
+     private var topSurface: Surface? = null
+     private var bottomSurface: Surface? = null
+     private var currentUrl = DualScreenBrowserActivity.DEFAULT_URL
++    private var currentDocumentPath: String? = null
+     private var selectedText: String? = null
+     private var exiting = false
+     private var singleScreenSession = false
+@@ -807,18 +819,19 @@
+     }
+ 
+     @Synchronized
+-    fun attach(activity: DualScreenBrowserActivity, initialUrl: String) {
++    fun attach(activity: DualScreenBrowserActivity, initialUrl: String, documentPath: String? = null) {
+         exiting = false
+         if (session != null && singleScreenSession != activity.isSingleScreen) {
+             controller.get()?.takeIf { it !== activity }?.finishFromPair()
+             topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
+             shutdownSession()
+         }
++        val hadSession = session != null
+         if (activity.isSingleScreen) {
+             controller.clear()
+             topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
+             topDisplay = WeakReference(activity)
+-            ensureSession(activity, initialUrl, singleScreen = true)
++            ensureSession(activity, initialUrl, documentPath, singleScreen = true)
+             ttsController?.currentUiState()?.let(activity::ttsStateChanged)
+         } else if (activity.isTopDisplay) {
+             topDisplay.get()?.takeIf { it !== activity }?.finishFromPair()
+@@ -828,7 +841,10 @@
+         } else {
+             controller.get()?.takeIf { it !== activity }?.finishFromPair()
+             controller = WeakReference(activity)
+-            ensureSession(activity, initialUrl, singleScreen = false)
++            ensureSession(activity, initialUrl, documentPath, singleScreen = false)
++        }
++        if (hadSession && session != null && documentPath != null && documentPath != currentDocumentPath) {
++            loadDocument(activity, requireNotNull(session), documentPath, initialUrl)
+         }
+     }
+ 
+@@ -960,6 +976,7 @@
+ 
+     @Synchronized
+     fun navigate(url: String) {
++        currentDocumentPath = null
+         session?.loadUri(url)
+     }
+ 
+@@ -1009,6 +1026,7 @@
+     private fun ensureSession(
+         activity: DualScreenBrowserActivity,
+         initialUrl: String,
++        documentPath: String?,
+         singleScreen: Boolean,
+     ) {
+         if (session != null) return
+@@ -1018,9 +1036,9 @@
+             setProgressDelegate(object : GeckoSession.ProgressDelegate {
+                 override fun onPageStart(session: GeckoSession, url: String) {
+                     ttsController?.stop("page-start")
+-                    currentUrl = url
++                    if (currentDocumentPath == null) currentUrl = url
+                     selectedText = null
+-                    topDisplay.get()?.pageStarted(url)
++                    topDisplay.get()?.pageStarted(currentUrl)
+                 }
+ 
+                 override fun onProgressChange(session: GeckoSession, progress: Int) {
+@@ -1050,8 +1068,8 @@
+                     hasUserGesture: Boolean,
+                 ) {
+                     if (url != null) {
+-                        currentUrl = url
+-                        topDisplay.get()?.locationChanged(url)
++                        if (currentDocumentPath == null) currentUrl = url
++                        topDisplay.get()?.locationChanged(currentUrl)
+                     }
+                 }
+             })
+@@ -1131,9 +1149,36 @@
+                 bottomSurface?.let {
+                     sharedCompositor.setOutput(DualScreenSharedCompositor.Slot.BOTTOM, it)
+                 }
+-                activeSession.loadUri(initialUrl)
+-            }
+-        }
++                if (documentPath != null) {
++                    loadDocument(activity, activeSession, documentPath, initialUrl)
++                } else {
++                    currentDocumentPath = null
++                    activeSession.loadUri(initialUrl)
++                }
++            }
++        }
++    }
++
++    private fun loadDocument(
++        activity: DualScreenBrowserActivity,
++        activeSession: GeckoSession,
++        documentPath: String,
++        fallbackUrl: String,
++    ) {
++        val preparedUrl = DocumentReader.preparedUrl(activity.applicationContext, documentPath)
++        if (preparedUrl == null) {
++            currentDocumentPath = null
++            activeSession.loadUri(fallbackUrl)
++            return
++        }
++        currentDocumentPath = documentPath
++        currentUrl = "kbrowser-document://${java.io.File(documentPath).nameWithoutExtension}"
++        activeSession.loadUri(preparedUrl)
++        Log.i(
++            "KBrowserDocument",
++            "DOCUMENT_LOADED loopback=true bytes=${java.io.File(documentPath).length()} " +
++                "display=${activity.display?.displayId}",
++        )
+     }
+ 
+     private fun shutdownSession() {
+@@ -1150,6 +1195,7 @@
+         geckoDisplay = null
+         activeSession?.close()
+         session = null
++        currentDocumentPath = null
+         singleScreenSession = false
+         selectedText = null
+         compositor?.stop()
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt
+@@ -0,0 +1,622 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++package org.mozilla.fenix.dualscreen
++
++import android.content.Context
++import android.content.Intent
++import android.database.Cursor
++import android.net.Uri
++import android.provider.OpenableColumns
++import android.util.Log
++import org.json.JSONArray
++import org.json.JSONObject
++import org.json.JSONTokener
++import java.io.ByteArrayInputStream
++import java.io.ByteArrayOutputStream
++import java.io.File
++import java.net.InetAddress
++import java.net.ServerSocket
++import java.nio.ByteBuffer
++import java.nio.ByteOrder
++import java.nio.charset.Charset
++import java.security.MessageDigest
++import java.util.Locale
++import java.util.zip.ZipInputStream
++import kotlin.concurrent.thread
++
++/** Offline, bounded conversion of documents to semantic HTML for the shared Gecko canvas. */
++internal object DocumentReader {
++    const val EXTRA_CACHE_PATH = "kbrowser.document.cachePath"
++    const val EXTRA_TITLE = "kbrowser.document.title"
++    const val EXTRA_FORMAT = "kbrowser.document.format"
++    const val EXTRA_PARSE_MS = "kbrowser.document.parseMs"
++
++    private const val TAG = "KBrowserDocument"
++    private const val MAX_INPUT_BYTES = 32 * 1024 * 1024
++    private const val MAX_ZIP_ENTRY_BYTES = 16 * 1024 * 1024
++    private const val MAX_ZIP_TOTAL_BYTES = 64 * 1024 * 1024
++    private const val MAX_ZIP_ENTRIES = 2_048
++    private const val MAX_TEXT_CHARS = 500_000
++    private const val MAX_HTML_CHARS = 16 * 1024 * 1024
++    private const val MAX_TABLE_ROWS = 5_000
++    private const val MAX_TABLE_COLUMNS = 128
++    @Volatile private var documentServer: LocalDocumentServer? = null
++
++    data class Prepared(
++        val cachePath: String,
++        val title: String,
++        val format: String,
++        val parseMs: Long,
++    )
++
++    fun preparedUrl(context: Context, path: String?): String? {
++        if (path.isNullOrBlank()) return null
++        val root = File(context.cacheDir, "kbrowser-documents").canonicalFile
++        val file = File(path).canonicalFile
++        if (!file.path.startsWith(root.path + File.separator) || !file.isFile || file.length() > MAX_HTML_CHARS) {
++            Log.w(TAG, "Rejected invalid prepared document path")
++            return null
++        }
++        val server = runCatching {
++            documentServer ?: synchronized(this) {
++                documentServer ?: LocalDocumentServer(root).also { documentServer = it }
++            }
++        }.getOrElse {
++            Log.e(TAG, "Unable to start loopback document server", it)
++            return null
++        }
++        return server.url(file)
++    }
++
++    fun isLocalDocument(intent: Intent): Boolean {
++        if (intent.action != Intent.ACTION_VIEW) return false
++        val uri = intent.data ?: return false
++        return uri.scheme == "content" || uri.scheme == "file"
++    }
++
++    fun prepare(context: Context, intent: Intent): Prepared {
++        val started = System.nanoTime()
++        val uri = requireNotNull(intent.data)
++        val title = displayName(context, uri).ifBlank { "未命名文档" }
++        val extension = title.substringAfterLast('.', "").lowercase(Locale.ROOT)
++        val mime = intent.type.orEmpty().lowercase(Locale.ROOT)
++        val readResult = runCatching { readBounded(context, uri) }
++        val bytes = readResult.getOrDefault(byteArrayOf())
++        val format = detectFormat(extension, mime, bytes)
++        val body = readResult.fold(
++            onSuccess = { runCatching { convert(format, title, it) }.getOrElse { error ->
++                Log.w(TAG, "parse failed format=$format bytes=${it.size}: ${error.javaClass.simpleName}")
++                errorBody(title, format, error.message ?: "文档结构损坏或暂不兼容")
++            } },
++            onFailure = { error ->
++                Log.w(TAG, "read failed format=$format: ${error.javaClass.simpleName}")
++                errorBody(title, format, error.message ?: "无法读取文档")
++            },
++        )
++        val html = page(title, format, bytes.size, body).take(MAX_HTML_CHARS)
++        val digest = MessageDigest.getInstance("SHA-256")
++            .digest((uri.toString() + bytes.size + format).toByteArray())
++            .take(12).joinToString("") { "%02x".format(it) }
++        val directory = File(context.cacheDir, "kbrowser-documents").apply { mkdirs() }
++        prune(directory)
++        val output = File(directory, "$digest.html")
++        output.writeText(html, Charsets.UTF_8)
++        val elapsedMs = (System.nanoTime() - started) / 1_000_000
++        Log.i(
++            TAG,
++            "DOCUMENT_READY format=$format bytes=${bytes.size} chars=${html.length} parseMs=$elapsedMs",
++        )
++        return Prepared(output.absolutePath, title, format, elapsedMs)
++    }
++
++    private fun readBounded(context: Context, uri: Uri): ByteArray {
++        val stream = context.contentResolver.openInputStream(uri)
++            ?: error("无法读取文档")
++        stream.use { input ->
++            val output = ByteArrayOutputStream()
++            val buffer = ByteArray(32 * 1024)
++            var total = 0
++            while (true) {
++                val count = input.read(buffer)
++                if (count < 0) break
++                total += count
++                require(total <= MAX_INPUT_BYTES) { "文档超过 32 MiB 安全上限" }
++                output.write(buffer, 0, count)
++            }
++            return output.toByteArray()
++        }
++    }
++
++    private fun displayName(context: Context, uri: Uri): String {
++        if (uri.scheme == "file") return uri.lastPathSegment.orEmpty()
++        var cursor: Cursor? = null
++        return try {
++            cursor = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
++            if (cursor?.moveToFirst() == true) cursor.getString(0).orEmpty() else uri.lastPathSegment.orEmpty()
++        } catch (_: Exception) {
++            uri.lastPathSegment.orEmpty()
++        } finally {
++            cursor?.close()
++        }
++    }
++
++    private fun detectFormat(extension: String, mime: String, bytes: ByteArray): String {
++        if (extension.isNotEmpty()) return extension
++        if (bytes.size >= 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) {
++            return when {
++                mime.contains("wordprocessing") -> "docx"
++                mime.contains("spreadsheet") -> "xlsx"
++                mime.contains("presentation") -> "pptx"
++                mime.contains("epub") -> "epub"
++                else -> "zip-document"
++            }
++        }
++        return when {
++            mime.contains("json") -> "json"
++            mime.contains("xml") -> "xml"
++            mime.contains("csv") -> "csv"
++            mime.contains("rtf") -> "rtf"
++            mime.startsWith("text/") -> "txt"
++            else -> "bin"
++        }
++    }
++
++    private fun convert(format: String, title: String, bytes: ByteArray): String = when (format) {
++        "html", "htm", "xhtml" -> sanitizeHtml(decodeText(bytes))
++        "md", "markdown" -> markdown(decodeText(bytes))
++        "json", "geojson", "ipynb" -> codeBlock(prettyJson(decodeText(bytes)), "JSON")
++        "xml", "svg" -> codeBlock(decodeText(bytes), "XML")
++        "csv" -> delimited(decodeText(bytes), ',')
++        "tsv" -> delimited(decodeText(bytes), '\t')
++        "docx" -> docx(unzip(bytes))
++        "xlsx" -> xlsx(unzip(bytes))
++        "pptx" -> pptx(unzip(bytes))
++        "odt", "ods", "odp" -> odf(unzip(bytes), format)
++        "epub" -> epub(unzip(bytes))
++        "rtf" -> paragraphs(rtf(decodeText(bytes)))
++        "mobi", "azw", "azw3" -> paragraphs(mobi(bytes))
++        "doc", "xls", "ppt" -> legacyOffice(bytes, format)
++        "zip-document" -> errorBody(title, format, "无法从 MIME 判断 ZIP 文档类型")
++        in sourceFormats -> codeBlock(decodeText(bytes), format.uppercase(Locale.ROOT))
++        else -> paragraphs(decodeText(bytes))
++    }
++
++    private fun decodeText(bytes: ByteArray): String {
++        val content = when {
++            bytes.size >= 3 && bytes[0] == 0xef.toByte() && bytes[1] == 0xbb.toByte() && bytes[2] == 0xbf.toByte() ->
++                bytes.copyOfRange(3, bytes.size).toString(Charsets.UTF_8)
++            bytes.size >= 2 && bytes[0] == 0xff.toByte() && bytes[1] == 0xfe.toByte() ->
++                bytes.copyOfRange(2, bytes.size).toString(Charsets.UTF_16LE)
++            bytes.size >= 2 && bytes[0] == 0xfe.toByte() && bytes[1] == 0xff.toByte() ->
++                bytes.copyOfRange(2, bytes.size).toString(Charsets.UTF_16BE)
++            else -> bytes.toString(Charsets.UTF_8)
++        }
++        val replacementRatio = content.count { it == '\uFFFD' }.toDouble() / content.length.coerceAtLeast(1)
++        return if (replacementRatio > 0.01) bytes.toString(Charset.forName("GB18030")) else content
++    }
++
++    private fun prettyJson(text: String): String = try {
++        when (val value = JSONTokener(text).nextValue()) {
++            is JSONObject -> value.toString(2)
++            is JSONArray -> value.toString(2)
++            else -> text
++        }
++    } catch (_: Exception) {
++        text
++    }
++
++    private fun markdown(text: String): String {
++        val output = StringBuilder()
++        var inCode = false
++        for (raw in text.lineSequence().take(20_000)) {
++            val line = raw.trimEnd()
++            if (line.trimStart().startsWith("```")) {
++                output.append(if (inCode) "</code></pre>" else "<pre><code>")
++                inCode = !inCode
++                continue
++            }
++            if (inCode) {
++                output.append(escape(line)).append('\n')
++                continue
++            }
++            val heading = line.takeWhile { it == '#' }.length
++            when {
++                heading in 1..6 && line.getOrNull(heading) == ' ' ->
++                    output.append("<h$heading>").append(inlineMarkdown(line.drop(heading + 1))).append("</h$heading>")
++                line.matches(Regex("^\\s*[-*+]\\s+.*")) ->
++                    output.append("<p class=bullet>• ").append(inlineMarkdown(line.replaceFirst(Regex("^\\s*[-*+]\\s+"), ""))).append("</p>")
++                line.matches(Regex("^\\s*\\d+[.)]\\s+.*")) ->
++                    output.append("<p>").append(inlineMarkdown(line.trim())).append("</p>")
++                line.isBlank() -> output.append("<div class=gap></div>")
++                else -> output.append("<p>").append(inlineMarkdown(line)).append("</p>")
++            }
++        }
++        if (inCode) output.append("</code></pre>")
++        return output.toString()
++    }
++
++    private fun inlineMarkdown(text: String): String = escape(text)
++        .replace(Regex("`([^`]+)`"), "<code>$1</code>")
++        .replace(Regex("\\*\\*([^*]+)\\*\\*"), "<strong>$1</strong>")
++
++    private fun delimited(text: String, delimiter: Char): String {
++        val rows = parseDelimited(text, delimiter)
++        if (rows.isEmpty()) return "<p>空表格</p>"
++        val output = StringBuilder("<div class=table-wrap><table>")
++        rows.take(MAX_TABLE_ROWS).forEachIndexed { rowIndex, row ->
++            output.append("<tr>")
++            row.take(MAX_TABLE_COLUMNS).forEach { cell ->
++                val tag = if (rowIndex == 0) "th" else "td"
++                output.append("<$tag>").append(escape(cell)).append("</$tag>")
++            }
++            output.append("</tr>")
++        }
++        output.append("</table></div>")
++        if (rows.size > MAX_TABLE_ROWS) output.append("<p class=warning>表格已按安全上限截断。</p>")
++        return output.toString()
++    }
++
++    private fun parseDelimited(text: String, delimiter: Char): List<List<String>> {
++        val rows = mutableListOf<MutableList<String>>()
++        var row = mutableListOf<String>()
++        val cell = StringBuilder()
++        var quoted = false
++        var index = 0
++        while (index < text.length && rows.size < MAX_TABLE_ROWS + 1) {
++            val char = text[index]
++            when {
++                char == '"' && quoted && text.getOrNull(index + 1) == '"' -> { cell.append('"'); index++ }
++                char == '"' -> quoted = !quoted
++                char == delimiter && !quoted -> { row.add(cell.toString()); cell.setLength(0) }
++                (char == '\n' || char == '\r') && !quoted -> {
++                    if (char == '\r' && text.getOrNull(index + 1) == '\n') index++
++                    row.add(cell.toString()); cell.setLength(0); rows.add(row); row = mutableListOf()
++                }
++                else -> cell.append(char)
++            }
++            index++
++        }
++        if (cell.isNotEmpty() || row.isNotEmpty()) { row.add(cell.toString()); rows.add(row) }
++        return rows
++    }
++
++    private fun unzip(bytes: ByteArray): Map<String, ByteArray> {
++        val entries = linkedMapOf<String, ByteArray>()
++        var total = 0
++        ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
++            while (true) {
++                val entry = zip.nextEntry ?: break
++                require(entries.size < MAX_ZIP_ENTRIES) { "ZIP 条目超过安全上限" }
++                if (entry.isDirectory) continue
++                val output = ByteArrayOutputStream()
++                val buffer = ByteArray(16 * 1024)
++                var entryTotal = 0
++                while (true) {
++                    val count = zip.read(buffer)
++                    if (count < 0) break
++                    entryTotal += count
++                    total += count
++                    require(entryTotal <= MAX_ZIP_ENTRY_BYTES && total <= MAX_ZIP_TOTAL_BYTES) {
++                        "ZIP 解压数据超过安全上限"
++                    }
++                    output.write(buffer, 0, count)
++                }
++                entries[entry.name.replace('\\', '/')] = output.toByteArray()
++            }
++        }
++        return entries
++    }
++
++    private fun docx(zip: Map<String, ByteArray>): String {
++        val xml = zip["word/document.xml"]?.toString(Charsets.UTF_8) ?: error("DOCX 缺少正文")
++        return xmlSemantic(xml, setOf("p", "tr"), setOf("tab"))
++    }
++
++    private fun xlsx(zip: Map<String, ByteArray>): String {
++        val shared = zip["xl/sharedStrings.xml"]?.toString(Charsets.UTF_8)
++            ?.let { tagTexts(it, "t") }.orEmpty()
++        val sheets = zip.keys.filter { it.matches(Regex("xl/worksheets/sheet\\d+\\.xml")) }
++            .sortedBy(::numericSuffix)
++        require(sheets.isNotEmpty()) { "XLSX 没有工作表" }
++        val output = StringBuilder()
++        sheets.forEachIndexed { sheetIndex, path ->
++            output.append("<h2>工作表 ${sheetIndex + 1}</h2><div class=table-wrap><table>")
++            val xml = zip.getValue(path).toString(Charsets.UTF_8)
++            Regex("(?s)<row\\b[^>]*>(.*?)</row>").findAll(xml).take(MAX_TABLE_ROWS).forEach { rowMatch ->
++                output.append("<tr>")
++                Regex("(?s)<c\\b([^>]*)>(.*?)</c>").findAll(rowMatch.groupValues[1])
++                    .take(MAX_TABLE_COLUMNS).forEach { cellMatch ->
++                        val attrs = cellMatch.groupValues[1]
++                        val raw = Regex("(?s)<v>(.*?)</v>").find(cellMatch.groupValues[2])?.groupValues?.get(1)
++                            ?: tagTexts(cellMatch.groupValues[2], "t").joinToString("")
++                        val value = if (Regex("\\bt=[\"']s[\"']").containsMatchIn(attrs)) {
++                            shared.getOrNull(raw.toIntOrNull() ?: -1).orEmpty()
++                        } else raw
++                        output.append("<td>").append(escape(xmlDecode(value))).append("</td>")
++                    }
++                output.append("</tr>")
++            }
++            output.append("</table></div>")
++        }
++        return output.toString()
++    }
++
++    private fun pptx(zip: Map<String, ByteArray>): String {
++        val slides = zip.keys.filter { it.matches(Regex("ppt/slides/slide\\d+\\.xml")) }
++            .sortedBy(::numericSuffix)
++        require(slides.isNotEmpty()) { "PPTX 没有幻灯片" }
++        return slides.mapIndexed { index, path ->
++            val text = tagTexts(zip.getValue(path).toString(Charsets.UTF_8), "t")
++                .joinToString("\n", transform = ::xmlDecode)
++            "<section class=slide><h2>幻灯片 ${index + 1}</h2>${paragraphs(text)}</section>"
++        }.joinToString("")
++    }
++
++    private fun odf(zip: Map<String, ByteArray>, format: String): String {
++        val xml = zip["content.xml"]?.toString(Charsets.UTF_8) ?: error("$format 缺少 content.xml")
++        return xmlSemantic(xml, setOf("p", "h", "table-row"), setOf("tab", "line-break"))
++    }
++
++    private fun epub(zip: Map<String, ByteArray>): String {
++        val container = zip["META-INF/container.xml"]?.toString(Charsets.UTF_8)
++            ?: error("EPUB 缺少 container.xml")
++        val opfPath = Regex("full-path=[\"']([^\"']+)").find(container)?.groupValues?.get(1)
++            ?: error("EPUB 缺少 package 路径")
++        val opf = zip[opfPath]?.toString(Charsets.UTF_8) ?: error("EPUB package 不存在")
++        val manifest = Regex("(?s)<item\\b([^>]*)/?>").findAll(opf).mapNotNull { match ->
++            val attrs = match.groupValues[1]
++            val id = attribute(attrs, "id") ?: return@mapNotNull null
++            val href = attribute(attrs, "href") ?: return@mapNotNull null
++            id to resolveZipPath(opfPath.substringBeforeLast('/', ""), href)
++        }.toMap()
++        val spine = Regex("(?s)<itemref\\b([^>]*)/?>").findAll(opf)
++            .mapNotNull { attribute(it.groupValues[1], "idref") }.toList()
++        require(spine.isNotEmpty()) { "EPUB spine 为空" }
++        return spine.take(500).mapIndexedNotNull { index, id ->
++            val chapterPath = manifest[id] ?: return@mapIndexedNotNull null
++            val chapter = zip[chapterPath]?.toString(Charsets.UTF_8) ?: return@mapIndexedNotNull null
++            "<section><h2>章节 ${index + 1}</h2>${sanitizeHtml(chapter)}</section>"
++        }.joinToString("")
++    }
++
++    private fun rtf(input: String): String {
++        val output = StringBuilder()
++        var index = 0
++        var skipGroupDepth = 0
++        var depth = 0
++        while (index < input.length && output.length < MAX_TEXT_CHARS) {
++            when (val char = input[index]) {
++                '{' -> depth++
++                '}' -> { if (skipGroupDepth == depth) skipGroupDepth = 0; depth-- }
++                '\\' -> {
++                    if (input.getOrNull(index + 1) == '*') { skipGroupDepth = depth; index++ }
++                    else if (input.getOrNull(index + 1) == '\\' || input.getOrNull(index + 1) == '{' || input.getOrNull(index + 1) == '}') {
++                        if (skipGroupDepth == 0) output.append(input[index + 1]); index++
++                    } else if (input.getOrNull(index + 1) == '\'') {
++                        val hex = input.substring(index + 2, (index + 4).coerceAtMost(input.length))
++                        if (skipGroupDepth == 0) output.append(hex.toIntOrNull(16)?.toChar() ?: ' ')
++                        index += 3
++                    } else {
++                        val match = Regex("^\\\\([a-zA-Z]+)(-?\\d+)? ?").find(input.substring(index))
++                        if (match != null) {
++                            val word = match.groupValues[1]
++                            val number = match.groupValues[2].toIntOrNull()
++                            if (skipGroupDepth == 0) when (word) {
++                                "par", "line" -> output.append('\n')
++                                "tab" -> output.append('\t')
++                                "u" -> number?.let { output.append((it and 0xffff).toChar()) }
++                            }
++                            index += match.value.length - 1
++                        }
++                    }
++                }
++                else -> if (skipGroupDepth == 0 && char.code >= 32) output.append(char)
++            }
++            index++
++        }
++        return output.toString()
++    }
++
++    private fun mobi(bytes: ByteArray): String {
++        require(bytes.size >= 86) { "MOBI 文件过短" }
++        fun u16(offset: Int) = ByteBuffer.wrap(bytes, offset, 2).order(ByteOrder.BIG_ENDIAN).short.toInt() and 0xffff
++        fun u32(offset: Int) = ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.BIG_ENDIAN).int
++        val records = u16(76)
++        require(records in 1..10_000) { "MOBI 记录表损坏" }
++        val offsets = (0 until records).map { u32(78 + it * 8) }.filter { it in 0 until bytes.size }
++        require(offsets.isNotEmpty()) { "MOBI 没有正文记录" }
++        val record0 = bytes.copyOfRange(offsets[0], offsets.getOrElse(1) { bytes.size })
++        val compression = ByteBuffer.wrap(record0, 0, 2).order(ByteOrder.BIG_ENDIAN).short.toInt() and 0xffff
++        val textLength = ByteBuffer.wrap(record0, 4, 4).order(ByteOrder.BIG_ENDIAN).int
++        val textRecords = ByteBuffer.wrap(record0, 8, 2).order(ByteOrder.BIG_ENDIAN).short.toInt() and 0xffff
++        val encryption = ByteBuffer.wrap(record0, 12, 2).order(ByteOrder.BIG_ENDIAN).short.toInt() and 0xffff
++        require(encryption == 0) { "加密/DRM MOBI 不支持" }
++        require(compression == 1 || compression == 2) { "不支持的 MOBI 压缩方式 $compression" }
++        val output = ByteArrayOutputStream()
++        for (index in 1..textRecords.coerceAtMost(offsets.size - 1)) {
++            val end = offsets.getOrElse(index + 1) { bytes.size }
++            val record = bytes.copyOfRange(offsets[index], end)
++            output.write(if (compression == 2) decompressPalmDoc(record) else record)
++            if (output.size() >= textLength.coerceAtMost(MAX_INPUT_BYTES)) break
++        }
++        return sanitizePlainBook(output.toByteArray().copyOf(textLength.coerceAtMost(output.size())))
++    }
++
++    private fun decompressPalmDoc(input: ByteArray): ByteArray {
++        val output = ByteArrayOutputStream()
++        var index = 0
++        while (index < input.size && output.size() < MAX_INPUT_BYTES) {
++            val value = input[index].toInt() and 0xff
++            index++
++            when {
++                value == 0 -> output.write(0)
++                value in 1..8 -> repeat(value.coerceAtMost(input.size - index)) { output.write(input[index++].toInt()) }
++                value <= 0x7f -> output.write(value)
++                value >= 0xc0 -> { output.write(' '.code); output.write(value xor 0x80) }
++                index < input.size -> {
++                    val pair = (value shl 8) or (input[index++].toInt() and 0xff)
++                    val distance = (pair shr 3) and 0x7ff
++                    val length = (pair and 7) + 3
++                    val snapshot = output.toByteArray()
++                    repeat(length) { position ->
++                        val source = snapshot.size - distance + (position % distance.coerceAtLeast(1))
++                        output.write(if (source in snapshot.indices) snapshot[source].toInt() else ' '.code)
++                    }
++                }
++            }
++        }
++        return output.toByteArray()
++    }
++
++    private fun sanitizePlainBook(bytes: ByteArray): String = decodeText(bytes)
++        .replace(Regex("(?is)<script.*?</script>"), " ")
++        .replace(Regex("(?s)<[^>]+>"), "\n")
++
++    private fun legacyOffice(bytes: ByteArray, format: String): String {
++        val ascii = Regex("[\\x20-\\x7e]{4,}").findAll(bytes.toString(Charsets.ISO_8859_1)).map { it.value }
++        val utf16 = bytes.toString(Charsets.UTF_16LE).split(Regex("[\\u0000-\\u001f]+"))
++            .filter { it.length >= 4 && it.any(Char::isLetterOrDigit) }
++        val text = (ascii + utf16.asSequence()).take(20_000).joinToString("\n")
++        return "<p class=warning>旧版 $format 为兼容提取视图，复杂布局、公式和宏不会执行或还原。建议另存为现代格式。</p>" +
++            paragraphs(text.ifBlank { "没有发现可读取的正文。" })
++    }
++
++    private fun xmlSemantic(xml: String, paragraphTags: Set<String>, breakTags: Set<String>): String {
++        var value = xml
++        breakTags.forEach { tag -> value = value.replace(Regex("(?is)<(?:\\w+:)?$tag\\b[^>]*/?>"), "\t") }
++        paragraphTags.forEach { tag -> value = value.replace(Regex("(?is)</(?:\\w+:)?$tag\\s*>"), "\n") }
++        value = value.replace(Regex("(?is)<[^>]+>"), "")
++        return paragraphs(xmlDecode(value))
++    }
++
++    private fun tagTexts(xml: String, localName: String): List<String> =
++        Regex("(?is)<(?:\\w+:)?$localName\\b[^>]*>(.*?)</(?:\\w+:)?$localName>")
++            .findAll(xml).map { it.groupValues[1].replace(Regex("(?s)<[^>]+>"), "") }.toList()
++
++    private fun sanitizeHtml(input: String): String {
++        val withoutDanger = input
++            .replace(Regex("(?is)<script\\b.*?</script>"), "")
++            .replace(Regex("(?is)<iframe\\b.*?</iframe>"), "")
++            .replace(Regex("(?is)<object\\b.*?</object>"), "")
++            .replace(Regex("(?is)<embed\\b[^>]*>"), "")
++            .replace(Regex("(?i)\\son[a-z]+\\s*=\\s*([\"']).*?\\1"), "")
++        val body = Regex("(?is)<body\\b[^>]*>(.*?)</body>").find(withoutDanger)?.groupValues?.get(1)
++            ?: withoutDanger
++        return body.take(MAX_HTML_CHARS / 2)
++    }
++
++    private fun paragraphs(text: String): String = text.lineSequence().take(20_000)
++        .map(String::trim)
++        .filter(String::isNotEmpty)
++        .joinToString("") { "<p>${escape(it)}</p>" }
++
++    private fun codeBlock(text: String, language: String): String =
++        "<p class=meta>$language · 保留源码排版</p><pre><code>${escape(text.take(MAX_TEXT_CHARS))}</code></pre>"
++
++    private fun errorBody(title: String, format: String, message: String): String =
++        "<section class=error><h2>无法完整读取 ${escape(title)}</h2><p>${escape(message)}</p>" +
++            "<p>识别格式：${escape(format)}。文件没有上传到网络，也没有执行其中的宏或脚本。</p></section>"
++
++    private fun page(title: String, format: String, bytes: Int, body: String): String = """
++        <!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
++        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
++        <meta name="viewport" content="width=device-width,initial-scale=1">
++        <title>${escape(title)}</title><style>
++        :root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f5f8fc;color:#182233;
++        font-family:-apple-system,BlinkMacSystemFont,'Noto Sans CJK SC',sans-serif;font-size:26px;line-height:1.72}
++        main{width:min(1680px,calc(100% - 96px));margin:104px auto 120px;background:#fff;border:1px solid #dce6f3;
++        border-radius:18px;padding:54px 68px;box-shadow:0 10px 36px #1d4c8420}h1{font-size:44px;line-height:1.25;margin:0 0 12px}
++        h2{font-size:34px;margin:1.3em 0 .5em}h3{font-size:29px}.meta{color:#58708d;font-size:20px;margin-bottom:36px}
++        p{margin:.55em 0}.gap{height:16px}.bullet{padding-left:1em}pre{overflow:auto;background:#102033;color:#e9f3ff;
++        border-radius:12px;padding:28px;font:22px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:4;white-space:pre}
++        code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.table-wrap{overflow:auto;margin:24px 0}
++        table{border-collapse:collapse;min-width:100%}th,td{border:1px solid #cbd8e8;padding:12px 16px;text-align:left;vertical-align:top}
++        th{position:sticky;top:80px;background:#eaf3ff;color:#123e70}.warning,.error{background:#fff5d9;border-left:6px solid #e0a000;padding:18px 24px}
++        .slide{border-bottom:3px solid #dce6f3;padding:20px 0 48px}@media(prefers-color-scheme:dark){body{background:#101720;color:#dbe8f7}
++        main{background:#172230;border-color:#2b4059}th{background:#193b61}.warning,.error{background:#443819}a{color:#76b8ff}}</style></head>
++        <body><main><h1>${escape(title)}</h1><p class="meta">${escape(format.uppercase(Locale.ROOT))} · ${humanBytes(bytes)} · KEMI 离线安全阅读</p>
++        $body</main></body></html>
++    """.trimIndent()
++
++    private fun sanitizePath(value: String): String = value.substringBefore('#').substringBefore('?')
++    private fun resolveZipPath(base: String, relative: String): String {
++        val parts = mutableListOf<String>()
++        (if (base.isBlank()) relative else "$base/$relative").split('/').forEach {
++            when (it) { "", "." -> Unit; ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.lastIndex); else -> parts.add(it) }
++        }
++        return sanitizePath(parts.joinToString("/"))
++    }
++    private fun attribute(attrs: String, name: String): String? =
++        Regex("(?:^|\\s)$name\\s*=\\s*[\"']([^\"']*)[\"']").find(attrs)?.groupValues?.get(1)
++    private fun numericSuffix(path: String): Int = Regex("(\\d+)(?=\\.[^.]+$)").find(path)?.value?.toIntOrNull() ?: Int.MAX_VALUE
++    private fun xmlDecode(text: String): String = text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"")
++        .replace("&apos;", "'").replace("&amp;", "&")
++    private fun escape(text: String): String = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
++        .replace("\"", "&quot;").replace("'", "&#39;")
++    private fun humanBytes(bytes: Int): String = if (bytes < 1024 * 1024) "${bytes / 1024.0}".take(4) + " KiB" else "${bytes / 1024 / 1024.0}".take(4) + " MiB"
++    private fun prune(directory: File) {
++        directory.listFiles()?.sortedByDescending(File::lastModified)?.drop(12)?.forEach(File::delete)
++    }
++
++    /**
++     * Loopback-only origin for generated pages. A normal HTTP origin lets the existing read-aloud
++     * WebExtension locate the first visible line, highlight it and auto-scroll; data: URLs do not.
++     */
++    private class LocalDocumentServer(private val root: File) {
++        private val socket = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
++
++        init {
++            thread(name = "KBrowserDocumentServer", isDaemon = true) {
++                while (!socket.isClosed) {
++                    runCatching { socket.accept() }.getOrNull()?.let { client ->
++                        runCatching {
++                            client.use {
++                                val reader = it.getInputStream().bufferedReader(Charsets.US_ASCII)
++                                val request = reader.readLine().orEmpty().split(' ')
++                                var header = reader.readLine()
++                                while (!header.isNullOrEmpty()) header = reader.readLine()
++                                val name = request.getOrNull(1)?.substringAfterLast('/')
++                                    ?.substringBefore('?').orEmpty()
++                                val file = File(root, name).canonicalFile
++                                val valid = request.firstOrNull() == "GET" &&
++                                    name.matches(Regex("[0-9a-f]{24}\\.html")) &&
++                                    file.path.startsWith(root.path + File.separator) && file.isFile &&
++                                    file.length() <= MAX_HTML_CHARS
++                                val body = if (valid) file.readBytes() else "Not found".toByteArray()
++                                val status = if (valid) "200 OK" else "404 Not Found"
++                                val output = it.getOutputStream()
++                                output.write(
++                                    ("HTTP/1.1 $status\r\n" +
++                                        "Content-Type: text/html; charset=utf-8\r\n" +
++                                        "Content-Length: ${body.size}\r\n" +
++                                        "Cache-Control: no-store\r\nConnection: close\r\n\r\n")
++                                        .toByteArray(Charsets.US_ASCII),
++                                )
++                                output.write(body)
++                                output.flush()
++                            }
++                        }.onFailure {
++                            // Gecko may close a no-store response as the paired Activity exits.
++                            // That expected disconnect is not a document/server failure.
++                            if (it !is java.net.SocketException) {
++                                Log.w(TAG, "Loopback document response failed", it)
++                            }
++                        }
++                    }
++                }
++            }
++            Log.i(TAG, "DOCUMENT_SERVER_READY loopback=true port=${socket.localPort}")
++        }
++
++        fun url(file: File): String = "http://127.0.0.1:${socket.localPort}/kbrowser-doc/${file.name}"
++    }
++
++    private val sourceFormats = setOf(
++        "txt", "log", "java", "kt", "kts", "c", "h", "cc", "cpp", "hpp", "go", "rs", "py",
++        "js", "jsx", "ts", "tsx", "css", "scss", "less", "sh", "bash", "zsh", "bat", "cmd", "ps1",
++        "sql", "graphql", "gql", "yaml", "yml", "toml", "ini", "conf", "cfg", "properties", "gradle",
++        "mmd", "mermaid", "puml", "plantuml", "dockerfile", "makefile",
++    )
++}
