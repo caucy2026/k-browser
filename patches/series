@@ -28,3 +28,4 @@ patches/0029-clear-internal-blank-address-before-kemi-open.patch
 patches/0030-route-launches-across-displays.patch
 patches/0031-add-webpage-read-aloud.patch
 patches/0032-start-read-aloud-at-first-visible-line.patch
+patches/0033-add-kemi-project-ranking-sites.patch

@@ -1,0 +1,22 @@
+diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dual_screen_home.html
+index bb99914..e58f726 100644
+--- a/app/src/main/assets/dual_screen_home.html
++++ b/app/src/main/assets/dual_screen_home.html
+@@ -8,7 +8,7 @@
+     * { box-sizing: border-box; }
+     body { margin: 0; padding: 86px 6vw 120px; color: #172033; background: #f5f7fa; font: 28px/1.5 system-ui, sans-serif; }
+     header { display: flex; align-items: end; justify-content: space-between; gap: 40px; margin-bottom: 34px; }
+-    h1 { margin: 0; font-size: 60px; line-height: 1.1; color: #1456c0; }
++    h1 { margin: 0; font-size: 60px; line-height: 1.1; color: #1456c0; white-space: nowrap; }
+     .sub { color: #596579; margin: 8px 0 0; }
+     form { display: flex; width: 620px; height: 66px; }
+     input { flex: 1; min-width: 0; padding: 0 22px; border: 1px solid #cbd5e3; border-radius: 12px 0 0 12px; background: #fff; color: #172033; font: inherit; outline: none; }
+@@ -42,6 +42,8 @@
+     <a href="https://www.guokr.com/">果壳<span>科学知识</span></a>
+     <a href="https://www.oschina.net/">开源中国<span>技术社区</span></a>
+     <a href="https://kemi.newlinksz.com/kd/">KEMI 知识库<span>内部知识与文档</span></a>
++    <a href="https://kemi-chat.newlinksz.com:21121/km100">KEMI Top 100<span>开源项目星图</span></a>
++    <a href="https://kemi-chat.newlinksz.com:21121/top300">GitHub Top 300<span>热门开源项目</span></a>
+   </div>
+   <div class="guide">KEMI 双屏浏览器：一页跨双屏，内容自然衔接，双屏都能流畅操作。</div>
+   <div class="spacer" aria-hidden="true"></div>
