@@ -3,13 +3,15 @@
 本文记录 KEMI 双屏浏览器相对固定 Iceraven/Fenix 上游的定制内容。可复现源码以
 `build/upstream.env` 指定的上游提交和 `patches/series` 的顺序为准。
 
-## 1.2.2-rc3：首页开源项目标签（2026-08-21）
+## 1.2.3 正式版：首页开源项目标签（2026-08-21）
 
 - 默认首页新增“KEMI Top 100”和“GitHub Top 300”，分别指向
   `https://kemi-chat.newlinksz.com:21121/km100` 与
   `https://kemi-chat.newlinksz.com:21121/top300`。
 - 主页“双屏浏览器”标题禁止自动换行，在车机横屏布局中保持一行显示。
 - 新增可复现补丁 `0033-add-kemi-project-ranking-sites.patch`。
+- 使用 KEMI 统一正式证书构建，正式产物为
+  `bin/DualScreenBrowser-v1.2.3-arm64-release.apk`。
 
 ## 1.2.2-rc2：网页语音播报（2026-08-15）
 
