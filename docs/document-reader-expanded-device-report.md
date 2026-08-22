@@ -62,9 +62,11 @@ Office 表格模板仍是最慢组（XLSM 289ms、XLTM 265ms、XLTX 272ms），�
 
 ## 5. 构建与证据
 
-- 真机候选：`bin/KBrowser-arm64.apk`，versionName `1.4.0-rc2`；
-- SHA-256：`05633852f01a322dec536e2d079f39e480a97d40528de60a4985d7782a3338ea`；
+- 正式 APK：`bin/DualScreenBrowser-v1.4.0-arm64-release.apk`；
+- SHA-256：`47beca7bcb1f5868489c0602943e72d76ff192c9d1cb999976291843b8be1b04`；
 - 签名：KEMI Unified Android Release，v2/v3 校验通过；
 - 新增矩阵：`artifacts/document-reader-ten-page-device62-dual-expanded-133/`；
 - 性能复测：`artifacts/document-reader-ten-page-device62-dual-perf-rerun/`；
+- 正式 APK 抽检：`artifacts/document-reader-ten-page-device62-dual-release-1.4.0/`，FB2/IPYNB/XLSX
+  均完成十页 PASS；
 - 每种格式保留第 1、5、10 页两屏截图，其余页保留指纹与亮度标准差，共 504 张新增证据截图。
