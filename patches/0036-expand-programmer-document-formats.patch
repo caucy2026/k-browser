@@ -1,0 +1,160 @@
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt
+@@ -80,7 +80,7 @@
+         val started = System.nanoTime()
+         val uri = requireNotNull(intent.data)
+         val title = displayName(context, uri).ifBlank { "未命名文档" }
+-        val extension = title.substringAfterLast('.', "").lowercase(Locale.ROOT)
++        val extension = formatHint(title)
+         val mime = intent.type.orEmpty().lowercase(Locale.ROOT)
+         val readResult = runCatching { readBounded(context, uri) }
+         val bytes = readResult.getOrDefault(byteArrayOf())
+@@ -166,14 +166,21 @@
+     private fun convert(format: String, title: String, bytes: ByteArray): String = when (format) {
+         "html", "htm", "xhtml" -> sanitizeHtml(decodeText(bytes))
+         "md", "markdown" -> markdown(decodeText(bytes))
+-        "json", "geojson", "ipynb" -> codeBlock(prettyJson(decodeText(bytes)), "JSON")
+-        "xml", "svg" -> codeBlock(decodeText(bytes), "XML")
++        "json", "geojson", "har" -> codeBlock(prettyJson(decodeText(bytes)), "JSON")
++        "jsonl", "ndjson" -> codeBlock(decodeText(bytes), "JSON Lines")
++        "ipynb" -> notebook(decodeText(bytes))
++        "xml", "svg", "plist" -> codeBlock(decodeText(bytes), "XML")
++        "fb2" -> xmlSemantic(
++            decodeText(bytes),
++            paragraphTags = setOf("p", "title", "subtitle", "v"),
++            breakTags = setOf("empty-line"),
++        )
+         "csv" -> delimited(decodeText(bytes), ',')
+         "tsv" -> delimited(decodeText(bytes), '\t')
+-        "docx" -> docx(unzip(bytes))
+-        "xlsx" -> xlsx(unzip(bytes))
+-        "pptx" -> pptx(unzip(bytes))
+-        "odt", "ods", "odp" -> odf(unzip(bytes), format)
++        "docx", "docm", "dotx", "dotm" -> docx(unzip(bytes))
++        "xlsx", "xlsm", "xltx", "xltm" -> xlsx(unzip(bytes))
++        "pptx", "pptm", "potx", "potm" -> pptx(unzip(bytes))
++        "odt", "ods", "odp", "ott", "ots", "otp" -> odf(unzip(bytes), format)
+         "epub" -> epub(unzip(bytes))
+         "rtf" -> paragraphs(rtf(decodeText(bytes)))
+         "mobi", "azw", "azw3" -> paragraphs(mobi(bytes))
+@@ -197,6 +204,19 @@
+         return if (replacementRatio > 0.01) bytes.toString(Charset.forName("GB18030")) else content
+     }
+ 
++    private fun formatHint(title: String): String {
++        val lower = title.lowercase(Locale.ROOT)
++        return when (lower) {
++            "dockerfile" -> "dockerfile"
++            "makefile", "gnumakefile" -> "makefile"
++            "cmakelists.txt" -> "cmake"
++            "gemfile" -> "ruby"
++            "rakefile" -> "ruby"
++            "podfile" -> "ruby"
++            else -> lower.substringAfterLast('.', "")
++        }
++    }
++
+     private fun prettyJson(text: String): String = try {
+         when (val value = JSONTokener(text).nextValue()) {
+             is JSONObject -> value.toString(2)
+@@ -205,8 +225,50 @@
+         }
+     } catch (_: Exception) {
+         text
++    }
++
++    private fun notebook(text: String): String = try {
++        val notebook = JSONObject(text)
++        val cells = notebook.optJSONArray("cells") ?: return codeBlock(prettyJson(text), "Jupyter Notebook JSON")
++        val output = StringBuilder("<p class=meta>Jupyter Notebook · 按单元格顺序离线阅读</p>")
++        for (index in 0 until minOf(cells.length(), 5_000)) {
++            val cell = cells.optJSONObject(index) ?: continue
++            val type = cell.optString("cell_type", "cell")
++            val source = jsonText(cell.opt("source"))
++            output.append("<section class=cell><h2>单元格 ${index + 1} · ${escape(type)}</h2>")
++            if (type == "markdown") {
++                output.append(markdown(source))
++            } else {
++                output.append("<pre><code>${escape(source.take(MAX_TEXT_CHARS))}</code></pre>")
++            }
++            val outputs = cell.optJSONArray("outputs")
++            if (outputs != null && outputs.length() > 0) {
++                val rendered = StringBuilder()
++                for (outputIndex in 0 until minOf(outputs.length(), 200)) {
++                    val item = outputs.optJSONObject(outputIndex) ?: continue
++                    val plain = item.optJSONObject("data")?.opt("text/plain") ?: item.opt("text")
++                    rendered.append(jsonText(plain))
++                }
++                if (rendered.isNotBlank()) {
++                    output.append("<h3>输出</h3><pre><code>${escape(rendered.toString().take(MAX_TEXT_CHARS))}</code></pre>")
++                }
++            }
++            output.append("</section>")
++            if (output.length >= MAX_HTML_CHARS / 2) break
++        }
++        output.toString()
++    } catch (_: Exception) {
++        codeBlock(prettyJson(text), "Jupyter Notebook JSON")
+     }
+ 
++    private fun jsonText(value: Any?): String = when (value) {
++        is JSONArray -> buildString {
++            for (index in 0 until value.length()) append(value.optString(index))
++        }
++        null, JSONObject.NULL -> ""
++        else -> value.toString()
++    }
++
+     private fun markdown(text: String): String {
+         val output = StringBuilder()
+         var inCode = false
+@@ -679,7 +741,11 @@
+         "txt", "log", "java", "kt", "kts", "c", "h", "cc", "cpp", "hpp", "go", "rs", "py",
+         "js", "jsx", "ts", "tsx", "css", "scss", "less", "sh", "bash", "zsh", "bat", "cmd", "ps1",
+         "sql", "graphql", "gql", "yaml", "yml", "toml", "ini", "conf", "cfg", "properties", "gradle",
+-        "mmd", "mermaid", "puml", "plantuml", "dockerfile", "makefile",
++        "mmd", "mermaid", "puml", "plantuml", "dockerfile", "makefile", "cmake", "mk",
++        "cs", "swift", "dart", "rb", "ruby", "php", "scala", "groovy", "lua", "r", "clj", "cljs",
++        "ex", "exs", "erl", "hrl", "fs", "fsx", "vb", "asm", "s", "vue", "svelte", "proto",
++        "tf", "tfvars", "hcl", "env", "editorconfig", "gitignore", "npmrc", "lock", "diff", "patch",
++        "rst", "adoc", "asciidoc", "tex", "bib", "org", "http", "pem", "crt", "ics", "vcf",
+     )
+ 
+     private val INLINE_CODE_REGEX = Regex("`([^`]+)`")
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -527,6 +527,9 @@
+                 <data android:scheme="file" />
+                 <data android:mimeType="text/*" />
+                 <data android:mimeType="application/json" />
++                <data android:mimeType="application/geo+json" />
++                <data android:mimeType="application/ld+json" />
++                <data android:mimeType="application/x-ipynb+json" />
+                 <data android:mimeType="application/xml" />
+                 <data android:mimeType="application/xhtml+xml" />
+                 <data android:mimeType="application/yaml" />
+@@ -538,11 +541,24 @@
+                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                 <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
++                <data android:mimeType="application/vnd.ms-word.document.macroEnabled.12" />
++                <data android:mimeType="application/vnd.ms-word.template.macroEnabled.12" />
++                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.template" />
++                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
++                <data android:mimeType="application/vnd.ms-excel.template.macroEnabled.12" />
++                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.template" />
++                <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" />
++                <data android:mimeType="application/vnd.ms-powerpoint.template.macroEnabled.12" />
++                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.template" />
+                 <data android:mimeType="application/vnd.oasis.opendocument.text" />
+                 <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                 <data android:mimeType="application/vnd.oasis.opendocument.presentation" />
+                 <data android:mimeType="application/epub+zip" />
+                 <data android:mimeType="application/x-mobipocket-ebook" />
++                <data android:mimeType="application/x-pem-file" />
++                <data android:mimeType="application/pkix-cert" />
++                <data android:mimeType="text/calendar" />
++                <data android:mimeType="text/vcard" />
+                 <data android:mimeType="application/octet-stream" />
+             </intent-filter>
+         </activity>

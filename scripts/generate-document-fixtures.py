@@ -54,12 +54,43 @@ for extension, label in {
     "toml": "TOML", "ini": "INI", "properties": "PROPERTIES",
 }.items():
     write(f"kemi-sample.{extension}", f"/* KEMI-DOC-TOP-{label} */\n" + long_text(label))
+for extension, label in {
+    "cc": "CPP-CC", "less": "LESS", "bash": "BASH", "zsh": "ZSH", "bat": "BATCH",
+    "cmd": "CMD", "ps1": "POWERSHELL", "gql": "GRAPHQL-GQL", "conf": "CONFIG",
+    "cfg": "CONFIG-CFG", "gradle": "GRADLE", "mermaid": "MERMAID-LONG",
+    "plantuml": "PLANTUML-LONG", "dockerfile": "DOCKERFILE", "makefile": "MAKEFILE",
+    "cs": "CSHARP", "swift": "SWIFT", "dart": "DART", "rb": "RUBY", "php": "PHP",
+    "scala": "SCALA", "groovy": "GROOVY", "lua": "LUA", "r": "R", "clj": "CLOJURE",
+    "cljs": "CLOJURESCRIPT", "ex": "ELIXIR", "exs": "ELIXIR-SCRIPT", "erl": "ERLANG",
+    "hrl": "ERLANG-HEADER", "fs": "FSHARP", "fsx": "FSHARP-SCRIPT", "vb": "VISUAL-BASIC",
+    "asm": "ASSEMBLY", "s": "ASSEMBLY-S", "vue": "VUE", "svelte": "SVELTE",
+    "proto": "PROTOBUF", "tf": "TERRAFORM", "tfvars": "TERRAFORM-VARS", "hcl": "HCL",
+    "cmake": "CMAKE", "mk": "MAKE-INCLUDE", "env": "ENV", "editorconfig": "EDITORCONFIG",
+    "gitignore": "GITIGNORE", "npmrc": "NPMRC", "lock": "LOCKFILE", "diff": "DIFF",
+    "patch": "PATCH", "rst": "RESTRUCTUREDTEXT", "adoc": "ASCIIDOC", "asciidoc": "ASCIIDOC-LONG",
+    "tex": "LATEX", "bib": "BIBTEX", "org": "ORG-MODE", "http": "HTTP-REQUEST",
+    "pem": "PEM", "crt": "PEM-CERTIFICATE", "ics": "ICALENDAR", "vcf": "VCARD",
+}.items():
+    write(f"kemi-sample.{extension}", f"# KEMI-DOC-TOP-{label}\n" + long_text(label))
 write("kemi-sample.json", json.dumps({"marker": "KEMI-DOC-TOP-JSON", "items": long_text("JSON").splitlines()}, ensure_ascii=False, indent=2))
+write("kemi-sample.geojson", json.dumps({"type": "FeatureCollection", "marker": "KEMI-DOC-TOP-GEOJSON", "features": [{"type": "Feature", "properties": {"line": line}, "geometry": None} for line in long_text("GEOJSON").splitlines()]}, ensure_ascii=False, indent=2))
+write("kemi-sample.har", json.dumps({"log": {"version": "1.2", "creator": {"name": "KEMI", "version": "1"}, "entries": [{"startedDateTime": "2026-08-22T00:00:00Z", "request": {"method": "GET", "url": f"https://example.invalid/{i}"}, "response": {"status": 200, "statusText": f"KEMI HAR 第 {i} 行"}} for i in range(LONG_LINE_COUNT)]}}, ensure_ascii=False, indent=2))
+write("kemi-sample.jsonl", "\n".join(json.dumps({"marker": f"KEMI-DOC-TOP-JSONL-{i}", "text": "中文双屏阅读"}, ensure_ascii=False) for i in range(LONG_LINE_COUNT)))
+write("kemi-sample.ndjson", "\n".join(json.dumps({"marker": f"KEMI-DOC-TOP-NDJSON-{i}", "text": "中文双屏阅读"}, ensure_ascii=False) for i in range(LONG_LINE_COUNT)))
+notebook_cells = []
+for i in range(36):
+    notebook_cells.append({"cell_type": "markdown", "metadata": {}, "source": [f"## Notebook 单元格 {i}\n", *[f"Jupyter 中文第 {i}-{line} 行\n" for line in range(8)]]})
+    notebook_cells.append({"cell_type": "code", "execution_count": i + 1, "metadata": {}, "source": [f"print('KEMI-DOC-TOP-IPYNB-{i}')\n", *[f"value_{line} = {line}\n" for line in range(8)]], "outputs": [{"output_type": "stream", "name": "stdout", "text": [f"输出 {i} 中文\n"]}]})
+write("kemi-sample.ipynb", json.dumps({"cells": notebook_cells, "metadata": {}, "nbformat": 4, "nbformat_minor": 5}, ensure_ascii=False))
 write("kemi-sample.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<document>\n  <title>KEMI-DOC-TOP-XML</title>\n" + "".join(f"  <p>XML 第 {i} 行 中文</p>\n" for i in range(LONG_LINE_COUNT)) + "</document>\n")
+write("kemi-sample.svg", "<svg xmlns='http://www.w3.org/2000/svg'>\n<title>KEMI-DOC-TOP-SVG</title>\n" + "\n".join(f"<text y='{i * 20}'>SVG 第 {i} 行 中文</text>" for i in range(LONG_LINE_COUNT)) + "\n</svg>")
+write("kemi-sample.plist", "<?xml version='1.0'?>\n<plist version='1.0'><array>\n" + "\n".join(f"<string>PLIST 第 {i} 行 中文</string>" for i in range(LONG_LINE_COUNT)) + "\n</array></plist>")
+write("kemi-sample.fb2", "<?xml version='1.0'?>\n<FictionBook><body><title>KEMI-DOC-TOP-FB2</title>\n" + "\n".join(f"<p>FB2 第 {i} 行 中文</p>" for i in range(LONG_LINE_COUNT)) + "\n</body></FictionBook>")
 write("kemi-sample.yaml", "marker: KEMI-DOC-TOP-YAML\nitems:\n" + "".join(f"  - YAML 第 {i} 行 中文\n" for i in range(LONG_LINE_COUNT)))
 write("kemi-sample.yml", "marker: KEMI-DOC-TOP-YML\nitems:\n" + "".join(f"  - YML 第 {i} 行 中文\n" for i in range(LONG_LINE_COUNT)))
 write("kemi-sample.rtf", r"{\rtf1\ansi\ansicpg65001\uc1\fs28 KEMI-DOC-TOP-RTF\par " + "".join(rf"RTF line {i} 中文\par " for i in range(LONG_LINE_COUNT)) + "}")
 write("kemi-sample.html", "<!doctype html><meta charset=utf-8><h1>KEMI-DOC-TOP-HTML</h1>" + "".join(f"<p>HTML 第 {i} 行 中文</p>" for i in range(LONG_LINE_COUNT)) + "<script>document.body.innerHTML='UNSAFE'</script>")
+write("kemi-sample.htm", "<!doctype html><meta charset=utf-8><h1>KEMI-DOC-TOP-HTM</h1>" + "".join(f"<p>HTM 第 {i} 行 中文</p>" for i in range(LONG_LINE_COUNT)))
 write("kemi-sample.xhtml", "<?xml version='1.0'?><html xmlns='http://www.w3.org/1999/xhtml'><body><h1>KEMI-DOC-TOP-XHTML</h1>" + "".join(f"<p>XHTML 第 {i} 行 中文</p>" for i in range(LONG_LINE_COUNT)) + "</body></html>")
 write("kemi-sample.mmd", "flowchart TD\n  A[KEMI-DOC-TOP-MERMAID] --> B[双屏阅读]\n" + long_text("MERMAID"))
 write("kemi-sample.puml", "@startuml\ntitle KEMI-DOC-TOP-PLANTUML\nAlice -> Bob: 双屏阅读\n@enduml\n" + long_text("PLANTUML"))
@@ -78,6 +109,8 @@ docx_entries = {
     "word/document.xml": '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + "".join(f"<w:p><w:r><w:t>{line}</w:t></w:r></w:p>" for line in long_text("DOCX").splitlines()) + "</w:body></w:document>",
 }
 archive("kemi-sample.docx", docx_entries)
+for extension in ("docm", "dotx", "dotm"):
+    (OUT / f"kemi-sample.{extension}").write_bytes((OUT / "kemi-sample.docx").read_bytes())
 
 shared = ["KEMI-DOC-TOP-XLSX"] + [f"XLSX 第 {i} 行 中文" for i in range(LONG_LINE_COUNT)]
 xlsx_entries = {
@@ -86,6 +119,8 @@ xlsx_entries = {
     "xl/worksheets/sheet1.xml": '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + "".join(f'<row r="{i + 1}"><c t="s"><v>{i}</v></c><c><v>{i}</v></c></row>' for i in range(len(shared))) + "</sheetData></worksheet>",
 }
 archive("kemi-sample.xlsx", xlsx_entries)
+for extension in ("xlsm", "xltx", "xltm"):
+    (OUT / f"kemi-sample.{extension}").write_bytes((OUT / "kemi-sample.xlsx").read_bytes())
 
 pptx_entries = {"[Content_Types].xml": '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'}
 for slide in range(1, 25):
@@ -93,12 +128,17 @@ for slide in range(1, 25):
     details = "".join(f"<a:t>{marker} · 第 {line:02d} 段中文双屏阅读内容</a:t>" for line in range(1, 13))
     pptx_entries[f"ppt/slides/slide{slide}.xml"] = '<p:sld xmlns:p="p" xmlns:a="a"><p:cSld>' + details + "</p:cSld></p:sld>"
 archive("kemi-sample.pptx", pptx_entries)
+for extension in ("pptm", "potx", "potm"):
+    (OUT / f"kemi-sample.{extension}").write_bytes((OUT / "kemi-sample.pptx").read_bytes())
 
 odt_content = '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text>' + "".join(f"<text:p>{line}</text:p>" for line in long_text("ODT").splitlines()) + "</office:text></office:body></office:document-content>"
 archive("kemi-sample.odt", {"mimetype": "application/vnd.oasis.opendocument.text", "content.xml": odt_content}, stored_first="mimetype")
 for extension, mime in {
     "ods": "application/vnd.oasis.opendocument.spreadsheet",
     "odp": "application/vnd.oasis.opendocument.presentation",
+    "ott": "application/vnd.oasis.opendocument.text-template",
+    "ots": "application/vnd.oasis.opendocument.spreadsheet-template",
+    "otp": "application/vnd.oasis.opendocument.presentation-template",
 }.items():
     content = odt_content.replace("ODT", extension.upper())
     archive(f"kemi-sample.{extension}", {"mimetype": mime, "content.xml": content}, stored_first="mimetype")
@@ -121,6 +161,8 @@ offset0 = 78 + 16
 offset1 = offset0 + len(record0)
 records = struct.pack(">I4sI4s", offset0, b"\0\0\0\0", offset1, b"\0\0\0\1")
 (OUT / "kemi-sample.mobi").write_bytes(header + records + record0 + book)
+for extension in ("azw", "azw3"):
+    (OUT / f"kemi-sample.{extension}").write_bytes((OUT / "kemi-sample.mobi").read_bytes())
 
 # Legacy Office compatibility fixtures intentionally exercise printable-string extraction,
 # not proprietary binary layout fidelity.

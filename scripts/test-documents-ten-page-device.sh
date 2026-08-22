@@ -12,6 +12,7 @@ SERIAL=${1:-192.168.3.62:5555}
 APK=${2:-"$PROJECT_DIR/bin/DualScreenBrowser-v1.3.0-arm64-release.apk"}
 MODE=${3:-dual}
 ONLY_EXT=${KBROWSER_ONLY_EXT:-}
+ONLY_EXTS=${KBROWSER_ONLY_EXTS:-}
 RESULTS_TAG=${KBROWSER_RESULTS_TAG:-}
 SKIP_INSTALL=${KBROWSER_SKIP_INSTALL:-0}
 FROM_EXT=${KBROWSER_FROM_EXT:-}
@@ -87,7 +88,9 @@ if [ "$SKIP_INSTALL" = 1 ]; then
         echo "FAIL: KBROWSER_SKIP_INSTALL requested but package is not installed" >&2; exit 2;
     }
 else
-    "$ADB" -s "$SERIAL" install -r "$APK" >/dev/null
+    # These head units intermittently drop TCP ADB during incremental/streamed installation of a
+    # large Gecko APK. Push-install is slower but has proved stable and preserves app data.
+    "$ADB" -s "$SERIAL" install --no-streaming -r "$APK" >/dev/null
 fi
 # This vendor image can retain a shell-owned suspended flag across an ADB reconnect/install. An
 # Activity start then succeeds only into android.SuspendedAppActivity, which must never be counted
@@ -103,23 +106,28 @@ PRIVATE_FIXTURES="/data/user/0/$PACKAGE/cache/document-fixtures"
 
 mime_for() {
     case "$1" in
-        txt|log|java|kt|kts|c|h|cpp|hpp|go|rs|py|js|jsx|ts|tsx|css|scss|sh|sql|graphql|md|markdown|mmd|puml|yaml|yml|toml|ini|properties) echo text/plain ;;
-        html) echo text/html ;;
+        txt|log|java|kt|kts|c|h|cc|cpp|hpp|go|rs|py|js|jsx|ts|tsx|css|scss|less|sh|bash|zsh|bat|cmd|ps1|sql|graphql|gql|md|markdown|mmd|mermaid|puml|plantuml|yaml|yml|toml|ini|conf|cfg|properties|gradle|dockerfile|makefile|cmake|mk|cs|swift|dart|rb|php|scala|groovy|lua|r|clj|cljs|ex|exs|erl|hrl|fs|fsx|vb|asm|s|vue|svelte|proto|tf|tfvars|hcl|env|editorconfig|gitignore|npmrc|lock|diff|patch|rst|adoc|asciidoc|tex|bib|org|http|pem|crt) echo text/plain ;;
+        html|htm) echo text/html ;;
         xhtml) echo application/xhtml+xml ;;
-        json) echo application/json ;;
-        xml) echo application/xml ;;
+        json|jsonl|ndjson|har) echo application/json ;;
+        geojson) echo application/geo+json ;;
+        ipynb) echo application/x-ipynb+json ;;
+        xml|svg|plist|fb2) echo application/xml ;;
         csv) echo text/csv ;;
         rtf) echo application/rtf ;;
         pdf) echo application/pdf ;;
         doc) echo application/msword ;;
         xls) echo application/vnd.ms-excel ;;
         ppt) echo application/vnd.ms-powerpoint ;;
-        docx) echo application/vnd.openxmlformats-officedocument.wordprocessingml.document ;;
-        xlsx) echo application/vnd.openxmlformats-officedocument.spreadsheetml.sheet ;;
-        pptx) echo application/vnd.openxmlformats-officedocument.presentationml.presentation ;;
-        odt) echo application/vnd.oasis.opendocument.text ;;
-        ods) echo application/vnd.oasis.opendocument.spreadsheet ;;
-        odp) echo application/vnd.oasis.opendocument.presentation ;;
+        docx|dotx) echo application/vnd.openxmlformats-officedocument.wordprocessingml.document ;;
+        docm|dotm) echo application/vnd.ms-word.document.macroEnabled.12 ;;
+        xlsx|xltx) echo application/vnd.openxmlformats-officedocument.spreadsheetml.sheet ;;
+        xlsm|xltm) echo application/vnd.ms-excel.sheet.macroEnabled.12 ;;
+        pptx|potx) echo application/vnd.openxmlformats-officedocument.presentationml.presentation ;;
+        pptm|potm) echo application/vnd.ms-powerpoint.presentation.macroEnabled.12 ;;
+        odt|ott) echo application/vnd.oasis.opendocument.text ;;
+        ods|ots) echo application/vnd.oasis.opendocument.spreadsheet ;;
+        odp|otp) echo application/vnd.oasis.opendocument.presentation ;;
         epub) echo application/epub+zip ;;
         mobi) echo application/x-mobipocket-ebook ;;
         *) echo application/octet-stream ;;
@@ -144,6 +152,12 @@ for file in "$FIXTURES"/*; do
     ext=${name##*.}
     if [ -n "$ONLY_EXT" ] && [ "$ext" != "$ONLY_EXT" ]; then
         continue
+    fi
+    if [ -n "$ONLY_EXTS" ]; then
+        case " $ONLY_EXTS " in
+            *" $ext "*) ;;
+            *) continue ;;
+        esac
     fi
     if [ -n "$FROM_EXT" ] && [ "$STARTED" = false ]; then
         [ "$ext" = "$FROM_EXT" ] || continue

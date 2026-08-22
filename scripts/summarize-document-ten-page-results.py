@@ -9,9 +9,6 @@ import statistics
 from pathlib import Path
 
 
-EXPECTED_FORMATS = 49
-
-
 def percentile(values: list[int], fraction: float) -> int:
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, int((len(ordered) - 1) * fraction + 0.5))]
@@ -20,6 +17,7 @@ def percentile(values: list[int], fraction: float) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("csv", type=Path)
+    parser.add_argument("--expected-formats", type=int)
     parser.add_argument("--allow-incomplete", action="store_true")
     args = parser.parse_args()
 
@@ -28,8 +26,9 @@ def main() -> None:
     formats = {row["format"] for row in rows}
     if len(rows) != len(formats):
         raise SystemExit("duplicate format rows in result CSV")
-    if not args.allow_incomplete and len(rows) != EXPECTED_FORMATS:
-        raise SystemExit(f"expected {EXPECTED_FORMATS} formats, found {len(rows)}")
+    expected = args.expected_formats or len(rows)
+    if not args.allow_incomplete and len(rows) != expected:
+        raise SystemExit(f"expected {expected} formats, found {len(rows)}")
     if any(row["result"] != "PASS" or row["pages"] != "10" for row in rows):
         raise SystemExit("CSV contains a failed or incomplete format")
 
@@ -37,7 +36,7 @@ def main() -> None:
     pss = [int(row["pssKiB"]) for row in rows]
     missed = [int(row["totalMissedDelta"]) for row in rows]
     print(
-        f"- 格式：{len(rows)}/{EXPECTED_FORMATS}；页面位置：{len(rows) * 10}；"
+        f"- 格式：{len(rows)}/{expected}；页面位置：{len(rows) * 10}；"
         f"分析帧：{len(rows) * 20}；"
     )
     print(

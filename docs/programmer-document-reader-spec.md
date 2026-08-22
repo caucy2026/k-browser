@@ -21,15 +21,15 @@
 
 | 类别 | 扩展名/格式 | 处理规则 |
 | --- | --- | --- |
-| 文本与源码 | `txt`, `log`, `md`, `markdown`, `java`, `kt`, `kts`, `c`, `h`, `cpp`, `hpp`, `go`, `rs`, `py`, `js`, `jsx`, `ts`, `tsx`, `css`, `scss`, `sh`, `bash`, `zsh`, `bat`, `ps1`, `sql`, `graphql` | UTF-8 优先，BOM/GB18030 兼容；源码按等宽、保留空白显示 |
-| 配置与接口 | `json`, `xml`, `yaml`, `yml`, `toml`, `ini`, `conf`, `properties`, OpenAPI | JSON/XML 格式化；其余保留结构；OpenAPI 按 JSON/YAML 文本阅读 |
+| 文本与源码 | `txt`, `log`, `md/markdown`, `rst`, `adoc/asciidoc`, `org`, `tex`, `bib` 及 `docs/document-reader-supported-formats.md` 所列程序语言 | UTF-8 优先，BOM/GB18030 兼容；源码按等宽、保留空白显示 |
+| 配置与接口 | `json`, `jsonl`, `ndjson`, `geojson`, `har`, `ipynb`, `xml`, `svg`, `plist`, `yaml/yml`, `toml`, `ini/conf/cfg`, Terraform/HCL, OpenAPI | JSON 家族格式化或逐行显示；Notebook 按单元格分节；其余保留结构 |
 | 表格文本 | `csv`, `tsv` | 按 RFC 4180 兼容规则解析引号、逗号、换行并生成可滚动表格 |
 | 网页文档 | `html`, `htm`, `xhtml` | 本地离线加载；禁止主动执行不可信脚本 |
-| 现代 Office | `docx`, `xlsx`, `pptx` | 离线解析 OOXML ZIP 包；提取正文、工作表、幻灯片文字和表格 |
-| 开放文档 | `odt`, `ods`, `odp` | 离线解析 ODF 1.3 包中的 `content.xml` |
+| 现代 Office | `docx/docm/dotx/dotm`, `xlsx/xlsm/xltx/xltm`, `pptx/pptm/potx/potm` | 离线解析 OOXML ZIP 包；宏只读不执行 |
+| 开放文档 | `odt/ods/odp`, `ott/ots/otp` | 离线解析 ODF 1.3 包中的 `content.xml` |
 | 电子书 | `epub` | 按 EPUB 3.3 的 container/package/spine 顺序合并章节 |
 | 富文本 | `rtf` | 解析段落、Unicode 和常用转义，忽略不影响正文的控制组 |
-| 电子书兼容 | `mobi`, `azw` | 支持未加密 PalmDOC/MOBI 正文；加密文件明确提示不支持 DRM，不静默失败 |
+| 电子书兼容 | `mobi`, `azw`, `azw3`, `fb2` | 支持未加密 PalmDOC/MOBI；FB2 按语义段落提取；不绕过 DRM |
 | 图表源码 | `mmd`, `mermaid`, `puml`, `plantuml` | 安全显示和朗读源文件；不调用外部在线渲染服务 |
 
 ### B 级：原生查看或兼容提取
