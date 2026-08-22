@@ -31,4 +31,5 @@ Release，证书 SHA-256：
 `C3:09:13:B0:C3:5B:84:50:F6:49:61:F5:B3:C7:6C:E8:30:4A:F0:76:0C:59:1E:40:BC:45:82:59:8C:38:8D:04`。
 
 完整源码复现以 `build/upstream.env` 和 `patches/series` 为准；APK 校验值在最终构建后写入同名
-`.sha256` 文件。
+`.sha256` 文件。本次正式 APK SHA-256：
+`9eee55df20fcc9b5b3337e933af2bba283b1ef396d253c17b797f6722113283d`。
