@@ -16,11 +16,11 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
   支持暂停、继续和停止；读到屏幕末尾自动平滑滚动，换页或退出立即停止语音。
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
 - 当前可复现补丁入口为 0001–0020 + 0025–0035。
-- 当前正式版本为 `1.3.0`，产物为
-  `bin/DualScreenBrowser-v1.3.0-arm64-release.apk`；新增离线程序员文档阅读，并使用 KEMI 统一正式证书签名。
+- 当前正式版本为 `1.3.1`，产物为
+  `bin/DualScreenBrowser-v1.3.1-arm64-release.apk`；使用 KEMI 统一正式证书签名。
 - 49 种真机样例覆盖常用源码/配置、Markdown、表格、Office/ODF、EPUB/MOBI、RTF、HTML 与 PDF；
   精确支持边界见 `docs/programmer-document-reader-spec.md`，实测数据见
-  `docs/document-reader-device63-report.md`。
+  `docs/document-reader-ten-page-device-report.md`。1.3.1 已完成 49 种×连续10页×D2/D0 的 980 帧矩阵。
 - KEMI 构建不显示 Firefox/Iceraven 注册、首次引导、Pocket/赞助内容或默认浏览器推广；
   Gecko 仅作为开源网页引擎保留。
 
@@ -106,8 +106,8 @@ KBROWSER_ANDROID_SDK_ROOT=/absolute/path/to/android-sdk \
 [docs/webpage-read-aloud.md](docs/webpage-read-aloud.md)。
 文档格式级别、安全上限和“支持”的严格定义见
 [docs/programmer-document-reader-spec.md](docs/programmer-document-reader-spec.md)，自动样例和真机步骤见
-[docs/document-reader-test-plan.md](docs/document-reader-test-plan.md)，63 实测结果见
-[docs/document-reader-device63-report.md](docs/document-reader-device63-report.md)。
+[docs/document-reader-ten-page-test-plan.md](docs/document-reader-ten-page-test-plan.md)，49 种连续十页结果见
+[docs/document-reader-ten-page-device-report.md](docs/document-reader-ten-page-device-report.md)。
 版本与全部定制内容见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## CI 架构

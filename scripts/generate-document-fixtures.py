@@ -16,11 +16,17 @@ OUT.mkdir(parents=True, exist_ok=True)
 for stale in OUT.glob("kemi-sample.*"):
     stale.unlink()
 
+# Keep every generated document comfortably longer than ten 1920x1280 viewports. The device
+# acceptance script advances by roughly one viewport nine times and rejects a repeated frame,
+# so a short fixture cannot accidentally be reported as a ten-page pass.
+LONG_LINE_COUNT = 420
+PDF_PAGE_COUNT = 12
+
 
 def long_text(fmt: str) -> str:
     lines = [f"KEMI-DOC-TOP-{fmt}", "中文 English 123：这是可以选择、复制和朗读的唯一测试句子。"]
-    lines += [f"第 {i:03d} 行 · {fmt} 双屏连续阅读样例 · https://kemi.newlinksz.com/kd/" for i in range(1, 101)]
-    lines.insert(48, f"KEMI-DOC-SEAM-{fmt}")
+    lines += [f"第 {i:03d} 行 · {fmt} 双屏连续阅读样例 · https://kemi.newlinksz.com/kd/" for i in range(1, LONG_LINE_COUNT + 1)]
+    lines.insert(LONG_LINE_COUNT // 2, f"KEMI-DOC-SEAM-{fmt}")
     return "\n".join(lines)
 
 
@@ -49,12 +55,12 @@ for extension, label in {
 }.items():
     write(f"kemi-sample.{extension}", f"/* KEMI-DOC-TOP-{label} */\n" + long_text(label))
 write("kemi-sample.json", json.dumps({"marker": "KEMI-DOC-TOP-JSON", "items": long_text("JSON").splitlines()}, ensure_ascii=False, indent=2))
-write("kemi-sample.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><document><title>KEMI-DOC-TOP-XML</title>" + "".join(f"<p>XML 第 {i} 行 中文</p>" for i in range(100)) + "</document>")
-write("kemi-sample.yaml", "marker: KEMI-DOC-TOP-YAML\nitems:\n" + "".join(f"  - YAML 第 {i} 行 中文\n" for i in range(100)))
-write("kemi-sample.yml", "marker: KEMI-DOC-TOP-YML\nitems:\n" + "".join(f"  - YML 第 {i} 行 中文\n" for i in range(100)))
-write("kemi-sample.rtf", r"{\rtf1\ansi\ansicpg65001\uc1\fs28 KEMI-DOC-TOP-RTF\par " + "".join(rf"RTF line {i} 中文\par " for i in range(100)) + "}")
-write("kemi-sample.html", "<!doctype html><meta charset=utf-8><h1>KEMI-DOC-TOP-HTML</h1>" + "".join(f"<p>HTML 第 {i} 行 中文</p>" for i in range(100)) + "<script>document.body.innerHTML='UNSAFE'</script>")
-write("kemi-sample.xhtml", "<?xml version='1.0'?><html xmlns='http://www.w3.org/1999/xhtml'><body><h1>KEMI-DOC-TOP-XHTML</h1>" + "".join(f"<p>XHTML 第 {i} 行 中文</p>" for i in range(100)) + "</body></html>")
+write("kemi-sample.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<document>\n  <title>KEMI-DOC-TOP-XML</title>\n" + "".join(f"  <p>XML 第 {i} 行 中文</p>\n" for i in range(LONG_LINE_COUNT)) + "</document>\n")
+write("kemi-sample.yaml", "marker: KEMI-DOC-TOP-YAML\nitems:\n" + "".join(f"  - YAML 第 {i} 行 中文\n" for i in range(LONG_LINE_COUNT)))
+write("kemi-sample.yml", "marker: KEMI-DOC-TOP-YML\nitems:\n" + "".join(f"  - YML 第 {i} 行 中文\n" for i in range(LONG_LINE_COUNT)))
+write("kemi-sample.rtf", r"{\rtf1\ansi\ansicpg65001\uc1\fs28 KEMI-DOC-TOP-RTF\par " + "".join(rf"RTF line {i} 中文\par " for i in range(LONG_LINE_COUNT)) + "}")
+write("kemi-sample.html", "<!doctype html><meta charset=utf-8><h1>KEMI-DOC-TOP-HTML</h1>" + "".join(f"<p>HTML 第 {i} 行 中文</p>" for i in range(LONG_LINE_COUNT)) + "<script>document.body.innerHTML='UNSAFE'</script>")
+write("kemi-sample.xhtml", "<?xml version='1.0'?><html xmlns='http://www.w3.org/1999/xhtml'><body><h1>KEMI-DOC-TOP-XHTML</h1>" + "".join(f"<p>XHTML 第 {i} 行 中文</p>" for i in range(LONG_LINE_COUNT)) + "</body></html>")
 write("kemi-sample.mmd", "flowchart TD\n  A[KEMI-DOC-TOP-MERMAID] --> B[双屏阅读]\n" + long_text("MERMAID"))
 write("kemi-sample.puml", "@startuml\ntitle KEMI-DOC-TOP-PLANTUML\nAlice -> Bob: 双屏阅读\n@enduml\n" + long_text("PLANTUML"))
 
@@ -62,10 +68,10 @@ csv_buffer = io.StringIO()
 writer = csv.writer(csv_buffer)
 writer.writerow(["marker", "说明", "含逗号字段"])
 writer.writerow(["KEMI-DOC-TOP-CSV", "中文", "a,b"])
-for i in range(100):
+for i in range(LONG_LINE_COUNT):
     writer.writerow([i, f"CSV 第 {i} 行", "可复制"])
 write("kemi-sample.csv", csv_buffer.getvalue())
-write("kemi-sample.tsv", "marker\t说明\t数值\n" + "\n".join(f"KEMI-DOC-TOP-TSV-{i}\t中文第 {i} 行\t{i}" for i in range(100)))
+write("kemi-sample.tsv", "marker\t说明\t数值\n" + "\n".join(f"KEMI-DOC-TOP-TSV-{i}\t中文第 {i} 行\t{i}" for i in range(LONG_LINE_COUNT)))
 
 docx_entries = {
     "[Content_Types].xml": '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
@@ -73,7 +79,7 @@ docx_entries = {
 }
 archive("kemi-sample.docx", docx_entries)
 
-shared = ["KEMI-DOC-TOP-XLSX"] + [f"XLSX 第 {i} 行 中文" for i in range(100)]
+shared = ["KEMI-DOC-TOP-XLSX"] + [f"XLSX 第 {i} 行 中文" for i in range(LONG_LINE_COUNT)]
 xlsx_entries = {
     "[Content_Types].xml": '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
     "xl/sharedStrings.xml": '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' + "".join(f"<si><t>{value}</t></si>" for value in shared) + "</sst>",
@@ -82,9 +88,10 @@ xlsx_entries = {
 archive("kemi-sample.xlsx", xlsx_entries)
 
 pptx_entries = {"[Content_Types].xml": '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'}
-for slide in range(1, 8):
+for slide in range(1, 25):
     marker = "KEMI-DOC-TOP-PPTX" if slide == 1 else f"幻灯片 {slide}"
-    pptx_entries[f"ppt/slides/slide{slide}.xml"] = '<p:sld xmlns:p="p" xmlns:a="a"><p:cSld><a:t>' + marker + "</a:t><a:t>中文双屏阅读内容</a:t></p:cSld></p:sld>"
+    details = "".join(f"<a:t>{marker} · 第 {line:02d} 段中文双屏阅读内容</a:t>" for line in range(1, 13))
+    pptx_entries[f"ppt/slides/slide{slide}.xml"] = '<p:sld xmlns:p="p" xmlns:a="a"><p:cSld>' + details + "</p:cSld></p:sld>"
 archive("kemi-sample.pptx", pptx_entries)
 
 odt_content = '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text>' + "".join(f"<text:p>{line}</text:p>" for line in long_text("ODT").splitlines()) + "</office:text></office:body></office:document-content>"
@@ -100,8 +107,8 @@ epub_entries = {
     "mimetype": "application/epub+zip",
     "META-INF/container.xml": '<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/package.opf"/></rootfiles></container>',
     "OEBPS/package.opf": '<package><manifest><item id="second" href="b.xhtml"/><item id="first" href="a.xhtml"/></manifest><spine><itemref idref="first"/><itemref idref="second"/></spine></package>',
-    "OEBPS/a.xhtml": '<html><body><h1>KEMI-DOC-TOP-EPUB</h1>' + "".join(f"<p>EPUB 第一章第 {i} 行</p>" for i in range(70)) + "</body></html>",
-    "OEBPS/b.xhtml": '<html><body><h1>KEMI-DOC-SEAM-EPUB</h1>' + "".join(f"<p>EPUB 第二章第 {i} 行</p>" for i in range(70)) + "</body></html>",
+    "OEBPS/a.xhtml": '<html><body><h1>KEMI-DOC-TOP-EPUB</h1>' + "".join(f"<p>EPUB 第一章第 {i} 行</p>" for i in range(LONG_LINE_COUNT // 2)) + "</body></html>",
+    "OEBPS/b.xhtml": '<html><body><h1>KEMI-DOC-SEAM-EPUB</h1>' + "".join(f"<p>EPUB 第二章第 {i} 行</p>" for i in range(LONG_LINE_COUNT // 2)) + "</body></html>",
 }
 archive("kemi-sample.epub", epub_entries, stored_first="mimetype")
 
@@ -118,21 +125,38 @@ records = struct.pack(">I4sI4s", offset0, b"\0\0\0\0", offset1, b"\0\0\0\1")
 # Legacy Office compatibility fixtures intentionally exercise printable-string extraction,
 # not proprietary binary layout fidelity.
 for extension in ("doc", "xls", "ppt"):
-    payload = ("D0CF11E0 KEMI-DOC-TOP-" + extension.upper() + "\n" + long_text(extension.upper()))
-    (OUT / f"kemi-sample.{extension}").write_bytes(payload.encode("utf-8"))
+    payload = ("KEMI-DOC-TOP-" + extension.upper() + "\n" + long_text(extension.upper()))
+    ole_magic = bytes.fromhex("d0cf11e0a1b11ae1")
+    (OUT / f"kemi-sample.{extension}").write_bytes(ole_magic + bytes(64) + payload.encode("utf-16le"))
 
 
 def minimal_pdf() -> bytes:
-    content = "BT /F1 20 Tf 72 760 Td (KEMI-DOC-TOP-PDF) Tj 0 -30 Td /F1 12 Tf "
-    content += " ".join(f"(PDF line {i:03d} - KEMI document reader) Tj 0 -14 Td" for i in range(45))
-    content += " ET"
-    objects = [
+    page_ids = list(range(3, 3 + PDF_PAGE_COUNT))
+    content_ids = list(range(3 + PDF_PAGE_COUNT, 3 + PDF_PAGE_COUNT * 2))
+    font_id = 3 + PDF_PAGE_COUNT * 2
+    kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
+    objects: list[bytes] = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
-        f"<< /Length {len(content.encode('ascii'))} >>\nstream\n{content}\nendstream".encode("ascii"),
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Type /Pages /Kids [{kids}] /Count {PDF_PAGE_COUNT} >>".encode("ascii"),
     ]
+    for page_id, content_id in zip(page_ids, content_ids):
+        del page_id
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 {font_id} 0 R >> >> /Contents {content_id} 0 R >>".encode("ascii")
+        )
+    contents: list[bytes] = []
+    for page in range(1, PDF_PAGE_COUNT + 1):
+        content = f"BT /F1 20 Tf 72 760 Td (KEMI PDF PAGE {page:02d}) Tj 0 -30 Td /F1 12 Tf "
+        content += " ".join(
+            f"(Page {page:02d} line {line:03d} - KEMI document reader) Tj 0 -14 Td"
+            for line in range(1, 43)
+        )
+        content += " ET"
+        encoded = content.encode("ascii")
+        contents.append(f"<< /Length {len(encoded)} >>\nstream\n".encode("ascii") + encoded + b"\nendstream")
+    objects.extend(contents)
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     result = bytearray(b"%PDF-1.4\n")
     offsets = [0]
     for index, obj in enumerate(objects, 1):

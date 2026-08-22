@@ -3,6 +3,20 @@
 本文记录 KEMI 双屏浏览器相对固定 Iceraven/Fenix 上游的定制内容。可复现源码以
 `build/upstream.env` 指定的上游提交和 `patches/series` 的顺序为准。
 
+## 1.3.1 正式版：连续十页文档闭环与真机优化（2026-08-22）
+
+- 将 49 种文档样例扩展为至少 12 页余量，完整执行每格式 10 个位置、D2/D0 各一帧的 980 帧真机矩阵；
+  49/49 均无黑屏、镜像、重复页面、崩溃或 ANR。
+- 最终非 PDF 解析耗时中位数 15ms、P90 30ms、最大 251ms；PSS 中位数 196603KiB、最大
+  233539KiB；9 次两屏交替滚动的 Total missed-frame 中位数 15、P90 33、最大 59。
+- Markdown 去除逐行重复正则构造并增加无标记快速路径；旧 DOC/XLS/PPT 改为线性 OLE 字符串扫描；
+  XLSX 复用预编译工作表/行/单元格规则。DOC 从约 259ms 降到最终 29ms，PPT 从约 208ms 降到
+  29ms，Markdown 从约 176ms 降到 26ms。
+- 测试脚本逐页检查外部前台、首帧、双屏 Activity、唯一指纹、亮度标准差、PSS、SurfaceFlinger 和
+  崩溃日志；支持断点续跑、单格式隔离结果、自动清除中断格式及厂商 suspended/DFP 启动竞态识别。
+- 新增连续十页规范、截图分析器、49 行 CSV 汇总器和逐格式真机报告；明确旧 Office 复杂版式、扫描
+  PDF OCR、DRM 电子书和 Mermaid/PlantUML 图形渲染的能力边界。
+
 ## 1.3.0 正式版：离线程序员文档阅读（2026-08-22）
 
 - 新增本地离线文档入口，覆盖 49 个真机样例：常用源码/配置、Markdown、CSV/TSV、HTML/XHTML、

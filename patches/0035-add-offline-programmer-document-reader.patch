@@ -349,7 +349,7 @@
          compositor?.stop()
 --- /dev/null
 +++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt
-@@ -0,0 +1,631 @@
+@@ -0,0 +1,696 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -574,12 +574,13 @@
 +                continue
 +            }
 +            val heading = line.takeWhile { it == '#' }.length
++            val trimmedStart = line.trimStart()
 +            when {
 +                heading in 1..6 && line.getOrNull(heading) == ' ' ->
 +                    output.append("<h$heading>").append(inlineMarkdown(line.drop(heading + 1))).append("</h$heading>")
-+                line.matches(Regex("^\\s*[-*+]\\s+.*")) ->
-+                    output.append("<p class=bullet>• ").append(inlineMarkdown(line.replaceFirst(Regex("^\\s*[-*+]\\s+"), ""))).append("</p>")
-+                line.matches(Regex("^\\s*\\d+[.)]\\s+.*")) ->
++                trimmedStart.length >= 2 && trimmedStart[0] in "-*+" && trimmedStart[1].isWhitespace() ->
++                    output.append("<p class=bullet>• ").append(inlineMarkdown(trimmedStart.drop(2).trimStart())).append("</p>")
++                isNumberedMarkdownLine(trimmedStart) ->
 +                    output.append("<p>").append(inlineMarkdown(line.trim())).append("</p>")
 +                line.isBlank() -> output.append("<div class=gap></div>")
 +                else -> output.append("<p>").append(inlineMarkdown(line)).append("</p>")
@@ -589,9 +590,19 @@
 +        return output.toString()
 +    }
 +
-+    private fun inlineMarkdown(text: String): String = escape(text)
-+        .replace(Regex("`([^`]+)`"), "<code>$1</code>")
-+        .replace(Regex("\\*\\*([^*]+)\\*\\*"), "<strong>$1</strong>")
++    private fun isNumberedMarkdownLine(text: String): Boolean {
++        var index = 0
++        while (index < text.length && text[index].isDigit()) index++
++        return index > 0 && index + 1 < text.length && text[index] in ".)" && text[index + 1].isWhitespace()
++    }
++
++    private fun inlineMarkdown(text: String): String {
++        val escaped = escape(text)
++        if ('`' !in escaped && "**" !in escaped) return escaped
++        return escaped
++            .replace(INLINE_CODE_REGEX, "<code>$1</code>")
++            .replace(INLINE_STRONG_REGEX, "<strong>$1</strong>")
++    }
 +
 +    private fun delimited(text: String, delimiter: Char): String {
 +        val rows = parseDelimited(text, delimiter)
@@ -669,21 +680,21 @@
 +    private fun xlsx(zip: Map<String, ByteArray>): String {
 +        val shared = zip["xl/sharedStrings.xml"]?.toString(Charsets.UTF_8)
 +            ?.let { tagTexts(it, "t") }.orEmpty()
-+        val sheets = zip.keys.filter { it.matches(Regex("xl/worksheets/sheet\\d+\\.xml")) }
++        val sheets = zip.keys.filter { it.matches(XLSX_SHEET_PATH_REGEX) }
 +            .sortedBy(::numericSuffix)
 +        require(sheets.isNotEmpty()) { "XLSX 没有工作表" }
 +        val output = StringBuilder()
 +        sheets.forEachIndexed { sheetIndex, path ->
 +            output.append("<h2>工作表 ${sheetIndex + 1}</h2><div class=table-wrap><table>")
 +            val xml = zip.getValue(path).toString(Charsets.UTF_8)
-+            Regex("(?s)<row\\b[^>]*>(.*?)</row>").findAll(xml).take(MAX_TABLE_ROWS).forEach { rowMatch ->
++            XLSX_ROW_REGEX.findAll(xml).take(MAX_TABLE_ROWS).forEach { rowMatch ->
 +                output.append("<tr>")
-+                Regex("(?s)<c\\b([^>]*)>(.*?)</c>").findAll(rowMatch.groupValues[1])
++                XLSX_CELL_REGEX.findAll(rowMatch.groupValues[1])
 +                    .take(MAX_TABLE_COLUMNS).forEach { cellMatch ->
 +                        val attrs = cellMatch.groupValues[1]
-+                        val raw = Regex("(?s)<v>(.*?)</v>").find(cellMatch.groupValues[2])?.groupValues?.get(1)
++                        val raw = XLSX_VALUE_REGEX.find(cellMatch.groupValues[2])?.groupValues?.get(1)
 +                            ?: tagTexts(cellMatch.groupValues[2], "t").joinToString("")
-+                        val value = if (Regex("\\bt=[\"']s[\"']").containsMatchIn(attrs)) {
++                        val value = if (XLSX_SHARED_CELL_REGEX.containsMatchIn(attrs)) {
 +                            shared.getOrNull(raw.toIntOrNull() ?: -1).orEmpty()
 +                        } else raw
 +                        output.append("<td>").append(escape(xmlDecode(value))).append("</td>")
@@ -836,12 +847,54 @@
 +        .replace(Regex("(?s)<[^>]+>"), "\n")
 +
 +    private fun legacyOffice(bytes: ByteArray, format: String): String {
-+        val ascii = Regex("[\\x20-\\x7e]{4,}").findAll(bytes.toString(Charsets.ISO_8859_1)).map { it.value }
-+        val utf16 = bytes.toString(Charsets.UTF_16LE).split(Regex("[\\u0000-\\u001f]+"))
-+            .filter { it.length >= 4 && it.any(Char::isLetterOrDigit) }
-+        val text = (ascii + utf16.asSequence()).take(20_000).joinToString("\n")
++        val strings = ArrayList<String>()
++        extractAsciiRuns(bytes, strings)
++        if (bytes.size >= OLE_MAGIC.size && bytes.copyOfRange(0, OLE_MAGIC.size).contentEquals(OLE_MAGIC)) {
++            extractUtf16LeRuns(bytes, strings)
++        }
++        val text = strings.asSequence().take(20_000).joinToString("\n")
 +        return "<p class=warning>旧版 $format 为兼容提取视图，复杂布局、公式和宏不会执行或还原。建议另存为现代格式。</p>" +
 +            paragraphs(text.ifBlank { "没有发现可读取的正文。" })
++    }
++
++    private fun extractAsciiRuns(bytes: ByteArray, output: MutableList<String>) {
++        val current = StringBuilder()
++        fun flush() {
++            if (current.length >= 4) output.add(current.toString())
++            current.setLength(0)
++        }
++        for (byte in bytes) {
++            val value = byte.toInt() and 0xff
++            if (value in 0x20..0x7e) current.append(value.toChar()) else flush()
++            if (output.size >= 20_000) return
++        }
++        flush()
++    }
++
++    private fun extractUtf16LeRuns(bytes: ByteArray, output: MutableList<String>) {
++        val current = StringBuilder()
++        var hasLetterOrDigit = false
++        fun flush() {
++            if (current.length >= 4 && hasLetterOrDigit) output.add(current.toString())
++            current.setLength(0)
++            hasLetterOrDigit = false
++        }
++        // OLE compound streams and their UTF-16LE strings are two-byte aligned. Scanning the odd
++        // alignment as well turns adjacent Chinese code units into plausible but meaningless CJK
++        // characters, doubles work and pollutes the compatibility view.
++        var index = 0
++        while (index + 1 < bytes.size && output.size < 20_000) {
++            val code = (bytes[index].toInt() and 0xff) or ((bytes[index + 1].toInt() and 0xff) shl 8)
++            val char = code.toChar()
++            if (char >= ' ' && !char.isISOControl() && char != '\uFFFD') {
++                current.append(char)
++                if (char.isLetterOrDigit()) hasLetterOrDigit = true
++            } else {
++                flush()
++            }
++            index += 2
++        }
++        flush()
 +    }
 +
 +    private fun xmlSemantic(xml: String, paragraphTags: Set<String>, breakTags: Set<String>): String {
@@ -979,5 +1032,17 @@
 +        "js", "jsx", "ts", "tsx", "css", "scss", "less", "sh", "bash", "zsh", "bat", "cmd", "ps1",
 +        "sql", "graphql", "gql", "yaml", "yml", "toml", "ini", "conf", "cfg", "properties", "gradle",
 +        "mmd", "mermaid", "puml", "plantuml", "dockerfile", "makefile",
++    )
++
++    private val INLINE_CODE_REGEX = Regex("`([^`]+)`")
++    private val INLINE_STRONG_REGEX = Regex("\\*\\*([^*]+)\\*\\*")
++    private val XLSX_SHEET_PATH_REGEX = Regex("xl/worksheets/sheet\\d+\\.xml")
++    private val XLSX_ROW_REGEX = Regex("(?s)<row\\b[^>]*>(.*?)</row>")
++    private val XLSX_CELL_REGEX = Regex("(?s)<c\\b([^>]*)>(.*?)</c>")
++    private val XLSX_VALUE_REGEX = Regex("(?s)<v>(.*?)</v>")
++    private val XLSX_SHARED_CELL_REGEX = Regex("\\bt=[\"']s[\"']")
++    private val OLE_MAGIC = byteArrayOf(
++        0xd0.toByte(), 0xcf.toByte(), 0x11, 0xe0.toByte(),
++        0xa1.toByte(), 0xb1.toByte(), 0x1a, 0xe1.toByte(),
 +    )
 +}
