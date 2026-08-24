@@ -2,7 +2,7 @@
 
 ## 结论
 
-当前明确支持并有连续十页真机证据的扩展名共 **133 种**。这里的“支持”不是仅注册扩展名：文件必须
+当前明确支持并有连续十页真机证据的扩展名共 **118 种**。这里的“支持”不是仅注册扩展名：文件必须
 能离线打开，D2/D0 必须显示同一 `1920×2560` 文档的相邻区域，两屏都能发起滚动，并在十个滚动
 位置保持非空白、非镜像、画面唯一且无崩溃。
 
@@ -37,13 +37,11 @@ JSON/GeoJSON/HAR 会格式化；JSONL/NDJSON 保持逐行结构；CSV/TSV 生成
 指文本编码内容，二进制 DER 证书不在此承诺内。无扩展名的 `Dockerfile`、`Makefile`、`GNUmakefile`、
 `CMakeLists.txt`、`Gemfile`、`Rakefile`、`Podfile` 也会按文件名识别。
 
-### Office、开放文档和模板
+### 开放文档和模板
 
-`doc`, `docx`, `docm`, `dotx`, `dotm`, `xls`, `xlsx`, `xlsm`, `xltx`, `xltm`, `ppt`, `pptx`,
-`pptm`, `potx`, `potm`, `odt`, `ods`, `odp`, `ott`, `ots`, `otp`。
+`odt`, `ods`, `odp`, `ott`, `ots`, `otp`。
 
-OOXML/ODF 在本机离线提取正文、单元格和幻灯片文字。宏启用格式只读正文，VBA、ActiveX 和嵌入式
-可执行对象永远不执行。`doc/xls/ppt` 是旧 OLE 文档的可打印正文兼容视图，不承诺复杂版式还原。
+ODF 在本机离线提取正文和单元格。宏、ActiveX 和嵌入式可执行对象永远不执行。
 
 ### 电子书和固定版面
 
@@ -58,6 +56,9 @@ EPUB 按 spine 顺序合并章节；FB2 按标题和正文段落提取；MOBI/AZ
 
 - 专有 Office/工程容器：OneNote `one`、Visio `vsd/vsdx`、Publisher `pub`、Project `mpp`、
   WPS `wps/et/dps`、HWP `hwp/hwpx`、Apple iWork `pages/numbers/key`；
+- Microsoft Office 画布/版式文档：Word `doc/docx/docm/dotx/dotm`、Excel
+  `xls/xlsx/xlsm/xltx/xltm`、PowerPoint `ppt/pptx/pptm/potx/potm/pps/ppsx/ppsm`。浏览器不再用
+  纯文本或单元格值冒充原始版式；请使用专用文档应用；
 - 固定版面和帮助系统：`chm`, `djvu/djv`, `xps/oxps`；
 - 图像漫画和压缩容器：`cbz`, `cbr`，以及把 `zip/rar/7z` 当文档直接阅读；
 - CAD/设计文件：`dwg`, `dxf`, `psd`, `ai`, `sketch`, `fig`；
@@ -73,4 +74,3 @@ EPUB 按 spine 顺序合并章节；FB2 按标题和正文段落提取；MOBI/AZ
 - 新增 84 种报告：`docs/document-reader-expanded-device-report.md`；
 - 测试规范：`docs/document-reader-ten-page-test-plan.md`；
 - 原始新增矩阵：`artifacts/document-reader-ten-page-device62-dual-expanded-133/ten-page-results.csv`。
-

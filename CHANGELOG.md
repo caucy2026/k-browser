@@ -3,6 +3,17 @@
 本文记录 KEMI 双屏浏览器相对固定 Iceraven/Fenix 上游的定制内容。可复现源码以
 `build/upstream.env` 指定的上游提交和 `patches/series` 的顺序为准。
 
+## 1.4.4-bookmarks-delete 测试版：收藏夹卡片与删除闭环（2026-08-24）
+
+- 收藏夹由系统纯文字列表重构为 KEMI 蓝色主题面板：标题显示已收藏数量，每个页面以大尺寸卡片展示星标、标题、域名和“打开”操作，适配车机横屏触摸。
+- 空收藏夹提供统一的品牌空状态和操作提示，不再只显示瞬时 Toast。
+- 每个收藏卡片新增“删除”入口；删除需要二次确认，调用 Fenix Places 的 `deleteNode(guid)` 删除真实书签，成功后刷新列表，避免误触且不影响其它收藏。
+- 数据源仍为 Fenix Places Mobile 根目录，收藏、打开和删除与浏览器原生书签数据保持一致，不额外建立一份 KEMI 私有收藏副本。
+- 192.168.3.63 已使用 `debug.keystore` 覆盖安装并从桌面入口启动：D0 `DualScreenBrowserActivity` 与 D2 `DualScreenTopActivity` 均恢复运行。
+- 测试 APK：`bin/KBrowser-arm64.apk`，versionName `1.4.4-bookmarks-delete`，SHA-256
+  `6da6cf8fef3350918e14a56f940e9e4234bbc28cde45ddf4655c6fa61e3eb6a9`。该测试包使用用户指定的
+  `debug.keystore`，不是 ROM platform 证书，也不是 KEMI Unified 正式发布证书。
+
 ## 1.3.1 正式版：连续十页文档闭环与真机优化（2026-08-22）
 
 - 将 49 种文档样例扩展为至少 12 页余量，完整执行每格式 10 个位置、D2/D0 各一帧的 980 帧真机矩阵；

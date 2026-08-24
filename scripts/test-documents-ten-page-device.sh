@@ -185,6 +185,7 @@ for file in "$FIXTURES"/*; do
     if [ "$MODE" = single ]; then
         single_extra='--ez kbrowser.document.singleScreenDiagnostic true'
     fi
+    launch_started_ms=$(date +%s%3N)
     # shellcheck disable=SC2086 -- optional diagnostic extra intentionally expands as two args.
     "$ADB" -s "$SERIAL" shell am start --display 2 -W -a android.intent.action.VIEW \
         -c android.intent.category.DEFAULT -p "$PACKAGE" -d "file://$private_file" -t "$mime" \
@@ -227,9 +228,27 @@ for file in "$FIXTURES"/*; do
     [ "$surface_ready" = true ] || { echo "FAIL $ext: compositor first frame timeout" >&2; exit 1; }
     if [ "$ext" = pdf ]; then
         parse_ms=0
-        # Gecko's first compositor frame is the native PDF.js shell. PDF page rasterization is
-        # asynchronous, so the shell may be blank briefly even though Surface binding succeeded.
-        sleep 4
+        # The first compositor frame is only the PDF.js shell. Poll the content crop until real
+        # page pixels appear, rather than charging a fixed four-second sleep to every PDF.
+        pdf_first_raster_ms=''
+        pdf_attempt=0
+        while [ "$pdf_attempt" -lt 40 ]; do
+            pdf_probe="$TEMP_ROOT/pdf-first-raster-$pdf_attempt.png"
+            pdf_probe_small="$TEMP_ROOT/pdf-first-raster-$pdf_attempt-small.png"
+            "$ADB" -s "$SERIAL" exec-out screencap -d 2 -p > "$pdf_probe"
+            sips -z 160 240 "$pdf_probe" --out "$pdf_probe_small" >/dev/null
+            pdf_probe_stdev=$(python3 "$ANALYZER" "$pdf_probe_small" --crop 10,22,220,119 --step 1 --tsv | cut -f3)
+            if awk "BEGIN { exit !($pdf_probe_stdev >= 5.0) }"; then
+                pdf_first_raster_ms=$(( $(date +%s%3N) - launch_started_ms ))
+                cp "$pdf_probe" "$RESULTS/pdf-first-raster-d2.png"
+                printf '%s\n' "$pdf_first_raster_ms" > "$RESULTS/pdf-first-raster-ms.txt"
+                break
+            fi
+            pdf_attempt=$((pdf_attempt + 1))
+            sleep 0.25
+        done
+        [ -n "$pdf_first_raster_ms" ] || { echo "FAIL pdf: first page did not rasterize within 10s" >&2; exit 1; }
+        echo "PDF FIRST RASTER: $pdf_first_raster_ms ms (D2 content stdev=$pdf_probe_stdev)"
     else
         grep -q "DOCUMENT_READY format=$ext" "$current_log" || { echo "FAIL $ext: no ready log" >&2; exit 1; }
         grep -q 'DOCUMENT_LOADED loopback=true' "$current_log" || { echo "FAIL $ext: no load log" >&2; exit 1; }

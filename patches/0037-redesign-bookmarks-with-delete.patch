@@ -1,0 +1,605 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 55f36b9..4318110 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -2,6 +2,8 @@ package org.mozilla.fenix.dualscreen
+ 
+ import android.app.Activity
+ import android.app.ActivityOptions
++import android.app.AlertDialog
++import android.app.DownloadManager
+ import android.content.ClipData
+ import android.content.ClipboardManager
+ import android.content.Context
+@@ -12,12 +14,15 @@ import android.graphics.drawable.ColorDrawable
+ import android.graphics.drawable.GradientDrawable
+ import android.graphics.drawable.StateListDrawable
+ import android.hardware.display.DisplayManager
++import android.net.Uri
+ import android.os.Build
+ import android.os.Bundle
++import android.os.Environment
+ import android.os.Handler
+ import android.os.Looper
+ import android.os.SystemClock
+ import android.util.Log
++import android.webkit.URLUtil
+ import android.view.Display
+ import android.view.Gravity
+ import android.view.InputDevice
+@@ -40,16 +45,22 @@ import android.widget.FrameLayout
+ import android.widget.LinearLayout
+ import android.widget.PopupMenu
+ import android.widget.ProgressBar
++import android.widget.ScrollView
+ import android.widget.TextView
+ import android.widget.Toast
+ import mozilla.components.concept.engine.EngineSession.CookieBannerHandlingMode
+ import mozilla.components.concept.engine.EngineSession.TrackingProtectionPolicy
++import mozilla.appservices.places.BookmarkRoot
+ import org.mozilla.fenix.ext.components
+ import org.mozilla.geckoview.AllowOrDeny
+ import org.mozilla.geckoview.GeckoDisplay
+ import org.mozilla.geckoview.GeckoResult
+ import org.mozilla.geckoview.GeckoSession
+ import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
+ import java.lang.ref.WeakReference
+ 
+ private class GeckoInputSurface(context: Context) : SurfaceView(context) {
+@@ -222,28 +233,65 @@ open class DualScreenBrowserActivity : Activity() {
+             elevation = 0f
+             layoutParams = FrameLayout.LayoutParams(
+                 FrameLayout.LayoutParams.MATCH_PARENT,
+-                dp(80),
++                dp(TOOLBAR_HEIGHT_DP),
+                 Gravity.TOP,
+             )
+         }
+         val toolbar = LinearLayout(this).apply {
+-            orientation = LinearLayout.HORIZONTAL
+-            gravity = Gravity.CENTER_VERTICAL
+-            setPadding(dp(12), dp(10), dp(12), dp(10))
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(12), dp(7), dp(12), dp(7))
+             layoutParams = FrameLayout.LayoutParams(
+                 FrameLayout.LayoutParams.MATCH_PARENT,
+-                dp(78),
++                dp(TOOLBAR_HEIGHT_DP - 2),
+                 Gravity.TOP,
+             )
+         }
+ 
+-        toolbar.addView(navButton("← 后退", "后退") { DualScreenCoordinator.goBack() })
+-        toolbar.addView(navButton("前进 →", "前进") { DualScreenCoordinator.goForward() })
+-        toolbar.addView(navButton("↻ 刷新", "刷新") { DualScreenCoordinator.reload() })
++        val controls = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER_VERTICAL
++            layoutParams = LinearLayout.LayoutParams(
++                LinearLayout.LayoutParams.MATCH_PARENT,
++                dp(56),
++            )
++        }
++        controls.addView(navButton("← 后退", "后退", dp(90)) { DualScreenCoordinator.goBack() })
++        controls.addView(navButton("前进 →", "前进", dp(90)) { DualScreenCoordinator.goForward() })
++        controls.addView(navButton("↻ 刷新", "刷新", dp(84)) { DualScreenCoordinator.reload() })
++        controls.addView(navButton("⌂ 主页", "主页", dp(80)) {
++            DualScreenCoordinator.navigate(HOME_URL)
++        })
++        controls.addView(navButton("☆ 收藏", "收藏当前页面", dp(80)) {
++            addCurrentPageBookmark()
++        })
++        controls.addView(navButton("☰ 收藏夹", "打开收藏夹", dp(92)) {
++            showBookmarks()
++        })
++        controls.addView(navButton("⇩ 下载", "查看下载目录", dp(80)) {
++            openDownloads()
++        })
++        val readAloud = navButton("🔊 朗读", "朗读网页", dp(90)) {
++            DualScreenCoordinator.toggleReadAloud()
++        }
++        ttsButton = readAloud
++        controls.addView(readAloud)
++        controls.addView(navButton("退出", "退出双屏浏览器", dp(70)) {
++            DualScreenCoordinator.exitAll()
++        })
++        toolbar.addView(controls)
++
++        val addressRow = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER_VERTICAL
++            layoutParams = LinearLayout.LayoutParams(
++                LinearLayout.LayoutParams.MATCH_PARENT,
++                dp(64),
++            )
++        }
+ 
+         val address = EditText(this).apply {
+-            hint = "搜索或输入网址"
+-            textSize = 14f
++            hint = "搜索或输入网址（完整显示当前地址）"
++            textSize = 16f
+             isSingleLine = true
+             setSelectAllOnFocus(true)
+             imeOptions = EditorInfo.IME_ACTION_GO
+@@ -255,8 +303,7 @@ open class DualScreenBrowserActivity : Activity() {
+                 cornerRadius = dp(8).toFloat()
+                 setStroke(dp(1), Color.rgb(205, 212, 224))
+             }
+-            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f).apply {
+-                marginStart = dp(6)
++            layoutParams = LinearLayout.LayoutParams(0, dp(54), 1f).apply {
+                 marginEnd = dp(6)
+             }
+             setOnEditorActionListener { _, actionId, _ ->
+@@ -269,21 +316,11 @@ open class DualScreenBrowserActivity : Activity() {
+             }
+         }
+         addressField = address
+-        toolbar.addView(address)
+-        toolbar.addView(navButton("打开", "打开网址", dp(72), true) {
++        addressRow.addView(address)
++        addressRow.addView(navButton("打开", "打开网址", dp(106), true) {
+             submitAddress(address)
+         })
+-        toolbar.addView(navButton("⌂ 主页", "主页", dp(84)) {
+-            DualScreenCoordinator.navigate(HOME_URL)
+-        })
+-        val readAloud = navButton("🔊 朗读", "朗读网页", dp(92)) {
+-            DualScreenCoordinator.toggleReadAloud()
+-        }
+-        ttsButton = readAloud
+-        toolbar.addView(readAloud)
+-        toolbar.addView(navButton("退出", "退出双屏浏览器", dp(72)) {
+-            DualScreenCoordinator.exitAll()
+-        })
++        toolbar.addView(addressRow)
+ 
+         loadingBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+             max = 100
+@@ -313,7 +350,7 @@ open class DualScreenBrowserActivity : Activity() {
+         elevation = dp(4).toFloat()
+         visibility = View.GONE
+         layoutParams = FrameLayout.LayoutParams(dp(330), dp(54), Gravity.TOP or Gravity.END).apply {
+-            topMargin = dp(86)
++            topMargin = dp(TOOLBAR_HEIGHT_DP + 6)
+             marginEnd = dp(12)
+         }
+         ttsStatus = TextView(this@DualScreenBrowserActivity).apply {
+@@ -538,8 +575,9 @@ open class DualScreenBrowserActivity : Activity() {
+                     if (!linkUri.isNullOrBlank()) {
+                         addItem(1, 0, "打开链接", android.R.drawable.ic_menu_view)
+                         addItem(2, 1, "复制链接", android.R.drawable.ic_menu_share)
++                        addItem(8, 2, "下载链接", android.R.drawable.stat_sys_download)
+                         if (!linkText.isNullOrBlank()) {
+-                            addItem(3, 2, "复制链接文字", android.R.drawable.ic_menu_edit)
++                            addItem(3, 3, "复制链接文字", android.R.drawable.ic_menu_edit)
+                         }
+                     }
+                     if (!mediaUri.isNullOrBlank()) {
+@@ -566,6 +604,7 @@ open class DualScreenBrowserActivity : Activity() {
+                         when (item.itemId) {
+                             1 -> DualScreenCoordinator.navigate(linkUri.orEmpty())
+                             2 -> copyText("链接", linkUri.orEmpty())
++                            8 -> downloadUrl(linkUri.orEmpty())
+                             3 -> copyText("链接文字", linkText.orEmpty())
+                             4 -> DualScreenCoordinator.navigate(mediaUri.orEmpty())
+                             5 -> copyText("媒体地址", mediaUri.orEmpty())
+@@ -694,6 +733,306 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+     }
+ 
++    /** Saves into Fenix's real Places bookmark store, shared with its normal bookmark UI. */
++    private fun addCurrentPageBookmark() {
++        val url = DualScreenCoordinator.currentUrl()
++        if (!url.startsWith("http://") && !url.startsWith("https://")) {
++            Toast.makeText(this, "当前页面不能收藏", Toast.LENGTH_SHORT).show()
++            return
++        }
++        val title = addressField?.text?.toString()?.takeIf { it.isNotBlank() } ?: url
++        CoroutineScope(Dispatchers.Main).launch {
++            val result = withContext(Dispatchers.IO) {
++                components.useCases.bookmarksUseCases.addBookmark(url = url, title = title)
++            }
++            Toast.makeText(
++                this@DualScreenBrowserActivity,
++                if (result.guidToEdit != null) "已收藏到书签" else "该页面已在书签中",
++                Toast.LENGTH_SHORT,
++            ).show()
++        }
++    }
++
++    /**
++     * Shows the real Places bookmark store in a KEMI-styled list.
++     *
++     * The stock AlertDialog item list made long titles and destinations
++     * indistinguishable on the wide vehicle display. Keep the same data source
++     * and navigation behavior, but give each page a large, explicit hit target.
++     */
++    private fun showBookmarks() {
++        CoroutineScope(Dispatchers.Main).launch {
++            val bookmarks = withContext(Dispatchers.IO) {
++                components.core.bookmarksStorage.getTree(BookmarkRoot.Mobile.id).getOrNull()
++                    ?.children
++                    .orEmpty()
++                    .filter { !it.url.isNullOrBlank() }
++                    .map {
++                        BookmarkListItem(
++                            guid = it.guid,
++                            title = it.title?.ifBlank { it.url.orEmpty() } ?: it.url.orEmpty(),
++                            url = it.url.orEmpty(),
++                        )
++                    }
++            }
++            showBookmarksSheet(bookmarks)
++        }
++    }
++
++    private fun showBookmarksSheet(bookmarks: List<BookmarkListItem>) {
++        val pageBackground = Color.rgb(247, 250, 255)
++        val brandBlue = Color.rgb(30, 112, 232)
++        val ink = Color.rgb(27, 42, 63)
++        val muted = Color.rgb(101, 119, 145)
++        val root = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(1), dp(1), dp(1), dp(1))
++            background = GradientDrawable().apply {
++                setColor(pageBackground)
++                cornerRadius = dp(22).toFloat()
++            }
++        }
++        val dialog = AlertDialog.Builder(this).setView(root).create()
++
++        val header = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER_VERTICAL
++            setPadding(dp(26), dp(18), dp(16), dp(18))
++            background = GradientDrawable().apply {
++                setColor(brandBlue)
++                setCornerRadii(floatArrayOf(dp(21).toFloat(), dp(21).toFloat(), dp(21).toFloat(), dp(21).toFloat(), 0f, 0f, 0f, 0f))
++            }
++        }
++        val headerCopy = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
++        }
++        headerCopy.addView(TextView(this).apply {
++            text = "收藏夹"
++            textSize = 22f
++            setTextColor(Color.WHITE)
++            setTypeface(typeface, android.graphics.Typeface.BOLD)
++        })
++        headerCopy.addView(TextView(this).apply {
++            text = if (bookmarks.isEmpty()) "保存常用页面，随时继续阅读" else "已保存 ${bookmarks.size} 个页面"
++            textSize = 14f
++            setTextColor(Color.rgb(222, 238, 255))
++            setPadding(0, dp(3), 0, 0)
++        })
++        header.addView(headerCopy)
++        header.addView(TextView(this).apply {
++            text = "关闭"
++            textSize = 15f
++            gravity = Gravity.CENTER
++            setTextColor(Color.WHITE)
++            contentDescription = "关闭收藏夹"
++            background = selectableBackground(Color.argb(42, 255, 255, 255))
++            setPadding(dp(16), dp(10), dp(16), dp(10))
++            setOnClickListener { dialog.dismiss() }
++        })
++        root.addView(header)
++
++        val content = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(18), dp(16), dp(18), dp(18))
++        }
++        if (bookmarks.isEmpty()) {
++            content.gravity = Gravity.CENTER
++            content.setPadding(dp(24), dp(42), dp(24), dp(42))
++            content.addView(TextView(this).apply {
++                text = "☆"
++                gravity = Gravity.CENTER
++                textSize = 34f
++                setTextColor(brandBlue)
++            })
++            content.addView(TextView(this).apply {
++                text = "还没有收藏页面"
++                gravity = Gravity.CENTER
++                textSize = 18f
++                setTextColor(ink)
++                setPadding(0, dp(10), 0, dp(4))
++            })
++            content.addView(TextView(this).apply {
++                text = "浏览网页时点按“收藏”，常用页面会显示在这里。"
++                gravity = Gravity.CENTER
++                textSize = 14f
++                setTextColor(muted)
++            })
++        } else {
++            bookmarks.forEachIndexed { index, bookmark ->
++                content.addView(bookmarkCard(bookmark, index, brandBlue, ink, muted, dialog),
++                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(82)).apply {
++                        if (index > 0) topMargin = dp(10)
++                    },
++                )
++            }
++        }
++        root.addView(ScrollView(this).apply {
++            isFillViewport = true
++            addView(content)
++        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
++
++        dialog.setOnShowListener {
++            dialog.window?.apply {
++                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
++                setLayout(
++                    minOf(dp(860), (resources.displayMetrics.widthPixels * 0.88f).toInt()),
++                    WindowManager.LayoutParams.WRAP_CONTENT,
++                )
++            }
++        }
++        dialog.show()
++    }
++
++    private fun bookmarkCard(
++        bookmark: BookmarkListItem,
++        @Suppress("UNUSED_PARAMETER") index: Int,
++        brandBlue: Int,
++        ink: Int,
++        muted: Int,
++        dialog: AlertDialog,
++    ): View = LinearLayout(this).apply {
++        orientation = LinearLayout.HORIZONTAL
++        gravity = Gravity.CENTER_VERTICAL
++        setPadding(dp(17), dp(10), dp(13), dp(10))
++        background = selectableBackground(Color.rgb(255, 255, 255), Color.rgb(214, 228, 248))
++        contentDescription = "打开收藏：${bookmark.title}"
++        val icon = TextView(this@DualScreenBrowserActivity).apply {
++            text = "★"
++            textSize = 20f
++            gravity = Gravity.CENTER
++            setTextColor(brandBlue)
++            background = GradientDrawable().apply {
++                setColor(Color.rgb(233, 242, 255))
++                cornerRadius = dp(14).toFloat()
++            }
++        }
++        addView(icon, LinearLayout.LayoutParams(dp(42), dp(42)))
++        val copy = LinearLayout(this@DualScreenBrowserActivity).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(14), 0, dp(8), 0)
++        }
++        copy.addView(TextView(this@DualScreenBrowserActivity).apply {
++            text = bookmark.title
++            textSize = 17f
++            setTextColor(ink)
++            maxLines = 1
++            ellipsize = android.text.TextUtils.TruncateAt.END
++        })
++        copy.addView(TextView(this@DualScreenBrowserActivity).apply {
++            text = bookmark.host
++            textSize = 13f
++            setTextColor(muted)
++            maxLines = 1
++            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
++            setPadding(0, dp(4), 0, 0)
++        })
++        addView(copy, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
++        addView(TextView(this@DualScreenBrowserActivity).apply {
++            text = "打开  ›"
++            textSize = 14f
++            gravity = Gravity.CENTER
++            setTextColor(brandBlue)
++            setPadding(dp(10), dp(10), dp(8), dp(10))
++        })
++        addView(TextView(this@DualScreenBrowserActivity).apply {
++            text = "删除"
++            textSize = 14f
++            gravity = Gravity.CENTER
++            setTextColor(Color.rgb(190, 69, 76))
++            contentDescription = "删除收藏：${bookmark.title}"
++            background = selectableBackground(Color.rgb(255, 246, 246), Color.rgb(255, 229, 230))
++            setPadding(dp(11), dp(8), dp(11), dp(8))
++            setOnClickListener { confirmDeleteBookmark(bookmark, dialog) }
++        }, LinearLayout.LayoutParams(dp(64), dp(42)).apply { leftMargin = dp(4) })
++        setOnClickListener {
++            dialog.dismiss()
++            DualScreenCoordinator.navigate(bookmark.url)
++        }
++    }
++
++    private fun confirmDeleteBookmark(bookmark: BookmarkListItem, bookmarksDialog: AlertDialog) {
++        AlertDialog.Builder(this)
++            .setTitle("删除收藏？")
++            .setMessage("“${bookmark.title}”将从收藏夹移除。")
++            .setNegativeButton("取消", null)
++            .setPositiveButton("删除") { _, _ ->
++                CoroutineScope(Dispatchers.Main).launch {
++                    val deleted = withContext(Dispatchers.IO) {
++                        components.core.bookmarksStorage.deleteNode(bookmark.guid).getOrDefault(false)
++                    }
++                    if (deleted) {
++                        bookmarksDialog.dismiss()
++                        Toast.makeText(this@DualScreenBrowserActivity, "已删除收藏", Toast.LENGTH_SHORT).show()
++                        showBookmarks()
++                    } else {
++                        Toast.makeText(this@DualScreenBrowserActivity, "删除失败，请重试", Toast.LENGTH_SHORT).show()
++                    }
++                }
++            }
++            .show()
++    }
++
++    private fun selectableBackground(fill: Int, pressed: Int = Color.rgb(230, 239, 251)): android.graphics.drawable.Drawable =
++        StateListDrawable().apply {
++            addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply {
++                setColor(pressed)
++                cornerRadius = dp(16).toFloat()
++            })
++            addState(intArrayOf(), GradientDrawable().apply {
++                setColor(fill)
++                setStroke(dp(1), Color.rgb(220, 229, 242))
++                cornerRadius = dp(16).toFloat()
++            })
++        }
++
++    private data class BookmarkListItem(val guid: String, val title: String, val url: String) {
++        val host: String
++            get() = Uri.parse(url).host?.removePrefix("www.") ?: url
++    }
++
++    /** Opens Android's completed/in-progress download list without leaving the shared page. */
++    private fun openDownloads() {
++        runCatching {
++            startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
++        }.onFailure {
++            Toast.makeText(this, "当前没有可查看的下载", Toast.LENGTH_SHORT).show()
++        }
++    }
++
++    /** Enqueues a link with the system DownloadManager so direct file links work on both modes. */
++    internal fun downloadUrl(url: String) {
++        if (!url.startsWith("http://") && !url.startsWith("https://")) {
++            Toast.makeText(this, "此链接不能下载", Toast.LENGTH_SHORT).show()
++            return
++        }
++        val fileName = URLUtil.guessFileName(url, null, null).ifBlank { "kemi-download" }
++        val request = DownloadManager.Request(android.net.Uri.parse(url)).apply {
++            setTitle(fileName)
++            setDescription("保存到 Download/双屏浏览器")
++            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
++            setAllowedOverMetered(true)
++            setAllowedOverRoaming(false)
++            setDestinationInExternalPublicDir(
++                Environment.DIRECTORY_DOWNLOADS,
++                "双屏浏览器/$fileName",
++            )
++            addRequestHeader("Referer", DualScreenCoordinator.currentUrl())
++        }
++        runCatching {
++            (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
++        }.onSuccess {
++            Toast.makeText(
++                this,
++                "已加入下载：Download/双屏浏览器/$fileName",
++                Toast.LENGTH_LONG,
++            ).show()
++        }.onFailure {
++            Log.w("KBrowserDownload", "Unable to enqueue download url=$url", it)
++            Toast.makeText(this, "下载启动失败", Toast.LENGTH_SHORT).show()
++        }
++    }
++
+     private fun launchTopDisplay(url: String, documentPath: String? = null) {
+         val manager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+         val secondary = manager.displays.firstOrNull { it.displayId == TARGET_TOP_DISPLAY_ID }
+@@ -765,6 +1104,8 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+     }
+ 
++    internal fun toolbarHeightPx(): Int = dp(TOOLBAR_HEIGHT_DP)
++
+     companion object {
+         const val EXTRA_URL = "url"
+         const val HOME_URL = "resource://android/assets/dual_screen_home.html"
+@@ -772,6 +1113,7 @@ open class DualScreenBrowserActivity : Activity() {
+         const val KEMI_KNOWLEDGE_URL = "https://kemi.newlinksz.com/kd/"
+         const val DEFAULT_URL = HOME_URL
+         const val TARGET_TOP_DISPLAY_ID = 2
++        const val TOOLBAR_HEIGHT_DP = 136
+         const val TARGET_WIDTH_PX = 1920
+         const val TARGET_VIEWPORT_HEIGHT_PX = 1280
+         const val TARGET_CANVAS_HEIGHT_PX = 2560
+@@ -875,10 +1217,13 @@ private object DualScreenCoordinator {
+             source.browserSurface.requestFocus()
+         }
+         val transformed = MotionEvent.obtain(event)
+-        if (!source.isTopDisplay) {
++        if (source.isTopDisplay) {
++            transformed.offsetLocation(0f, -source.toolbarHeightPx().toFloat())
++        } else {
+             transformed.offsetLocation(
+                 0f,
+-                DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX.toFloat(),
++                (DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX -
++                    source.toolbarHeightPx()).toFloat(),
+             )
+         }
+         activeSession.setActive(true)
+@@ -892,10 +1237,13 @@ private object DualScreenCoordinator {
+     fun dispatchGenericMotion(source: DualScreenBrowserActivity, event: MotionEvent): Boolean {
+         val activeSession = session ?: return false
+         val transformed = MotionEvent.obtain(event)
+-        if (!source.isTopDisplay) {
++        if (source.isTopDisplay) {
++            transformed.offsetLocation(0f, -source.toolbarHeightPx().toFloat())
++        } else {
+             transformed.offsetLocation(
+                 0f,
+-                DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX.toFloat(),
++                (DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX -
++                    source.toolbarHeightPx()).toFloat(),
+             )
+         }
+         activeSession.panZoomController.onMotionEvent(transformed)
+@@ -1054,6 +1402,12 @@ private object DualScreenCoordinator {
+                     session: GeckoSession,
+                     request: GeckoSession.NavigationDelegate.LoadRequest,
+                 ): GeckoResult<AllowOrDeny> {
++                    if (isDirectDownload(request.uri)) {
++                        mainHandler.post {
++                            (topDisplay.get() ?: controller.get())?.downloadUrl(request.uri)
++                        }
++                        return GeckoResult.deny()
++                    }
+                     if (request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW) {
+                         session.loadUri(request.uri)
+                         return GeckoResult.deny()
+@@ -1080,12 +1434,14 @@ private object DualScreenCoordinator {
+                     screenY: Int,
+                     element: GeckoSession.ContentDelegate.ContextElement,
+                 ) {
+-                    val topHalf = screenY < DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX
++                    val topContentHeight = DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX -
++                        activity.toolbarHeightPx()
++                    val topHalf = screenY < topContentHeight
+                     val target = if (topHalf) topDisplay.get() else controller.get()
+                     val localY = if (topHalf) {
+-                        screenY
++                        screenY + activity.toolbarHeightPx()
+                     } else {
+-                        screenY - DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX
++                        screenY - topContentHeight
+                     }
+                     target?.showMouseContextMenu(
+                         screenX.toFloat(),
+@@ -1128,7 +1484,10 @@ private object DualScreenCoordinator {
+         ttsBridge = BrowserTtsBridge(runtime, createdSession) { requestId, text ->
+             mainHandler.post { ttsController?.acceptPageText(requestId, text) }
+         }.also { it.install() }
+-        val sharedCompositor = DualScreenSharedCompositor(singleScreen)
++        val sharedCompositor = DualScreenSharedCompositor(
++            singleScreen = singleScreen,
++            topChromeHeightPx = activity.toolbarHeightPx(),
++        )
+         compositor = sharedCompositor
+         sharedCompositor.start { inputSurface ->
+             mainHandler.post {
+@@ -1246,4 +1605,14 @@ private object DualScreenCoordinator {
+             )
+         }, 600L)
+     }
++
++    private fun isDirectDownload(url: String): Boolean {
++        val path = android.net.Uri.parse(url).lastPathSegment?.lowercase().orEmpty()
++        return path.endsWith(".apk") || path.endsWith(".zip") || path.endsWith(".rar") ||
++            path.endsWith(".7z") || path.endsWith(".pdf") || path.endsWith(".epub") ||
++            path.endsWith(".doc") || path.endsWith(".docx") || path.endsWith(".xls") ||
++            path.endsWith(".xlsx") || path.endsWith(".ppt") || path.endsWith(".pptx") ||
++            path.endsWith(".mp3") || path.endsWith(".mp4") || path.endsWith(".mkv") ||
++            path.endsWith(".dmg") || path.endsWith(".exe")
++    }
+ }
