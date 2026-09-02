@@ -33,3 +33,4 @@ patches/0034-keep-home-site-labels-on-one-line.patch
 patches/0035-add-offline-programmer-document-reader.patch
 patches/0036-expand-programmer-document-formats.patch
 patches/0037-redesign-bookmarks-with-delete.patch
+patches/0038-fix-dual-screen-layout-and-branding.patch

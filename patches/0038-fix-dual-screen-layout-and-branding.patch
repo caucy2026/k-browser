@@ -1,0 +1,1721 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index 6f3261b..83d1875 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -57,7 +57,7 @@ android {
+             arg("room.schemaLocation", "$projectDir/schemas".toString())
+         }
+ 
+-        applicationId "io.github.forkmaintainers"
++        applicationId "com.newlink.kemi.kbrowser"
+         minSdk config.minSdkVersion
+         targetSdk config.targetSdkVersion
+         versionCode 1
+@@ -189,11 +189,10 @@ android {
+         }
+         forkRelease releaseTemplate >> {
+             buildConfigField "boolean", "USE_RELEASE_VERSIONING", "true"
+-            applicationIdSuffix ".iceraven"
+-            def deepLinkSchemeValue = "iceraven"
++            def deepLinkSchemeValue = "kbrowser"
+             buildConfigField "String", "DEEP_LINK_SCHEME", "\"$deepLinkSchemeValue\""
+             manifestPlaceholders.putAll([
+-                    "sharedUserId": "io.github.forkmaintainers.iceraven.sharedID",
++                    "sharedUserId": "com.newlink.kemi.kbrowser.sharedID",
+                     "deepLinkScheme": deepLinkSchemeValue,
+             ])
+             // Use custom default allowed addon list
+diff --git a/app/longfox/build.gradle b/app/longfox/build.gradle
+index 65a9d18..239004e 100644
+--- a/app/longfox/build.gradle
++++ b/app/longfox/build.gradle
+@@ -6,7 +6,9 @@
+ 
+ plugins {
+     alias(libs.plugins.kotlin.compose)
+-    alias(libs.plugins.python.envs.plugin)
++    // Parent :app already puts this plugin on the classpath (includeBuild);
++    // requesting it again with a version fails Gradle's compatibility check.
++    id 'com.jetbrains.python.envs'
+ }
+ 
+ apply plugin: 'com.android.library'
+diff --git a/app/src/forkRelease/res/values-zh-rCN/static_strings.xml b/app/src/forkRelease/res/values-zh-rCN/static_strings.xml
+new file mode 100644
+index 0000000..d1c6908
+--- /dev/null
++++ b/app/src/forkRelease/res/values-zh-rCN/static_strings.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="app_name">KEMI 浏览器</string>
++    <string name="firefox">KEMI 浏览器</string>
++    <string name="app_name_firefox">KEMI 浏览器</string>
++    <string name="home_screen_shortcut_single_screen">单屏模式</string>
++</resources>
+diff --git a/app/src/forkRelease/res/values-zh-rHK/static_strings.xml b/app/src/forkRelease/res/values-zh-rHK/static_strings.xml
+new file mode 100644
+index 0000000..9802a1d
+--- /dev/null
++++ b/app/src/forkRelease/res/values-zh-rHK/static_strings.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="app_name">KEMI 瀏覽器</string>
++    <string name="firefox">KEMI 瀏覽器</string>
++    <string name="app_name_firefox">KEMI 瀏覽器</string>
++    <string name="home_screen_shortcut_single_screen">單螢幕模式</string>
++</resources>
+diff --git a/app/src/forkRelease/res/values-zh-rTW/static_strings.xml b/app/src/forkRelease/res/values-zh-rTW/static_strings.xml
+new file mode 100644
+index 0000000..9802a1d
+--- /dev/null
++++ b/app/src/forkRelease/res/values-zh-rTW/static_strings.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="app_name">KEMI 瀏覽器</string>
++    <string name="firefox">KEMI 瀏覽器</string>
++    <string name="app_name_firefox">KEMI 瀏覽器</string>
++    <string name="home_screen_shortcut_single_screen">單螢幕模式</string>
++</resources>
+diff --git a/app/src/forkRelease/res/values-zh/static_strings.xml b/app/src/forkRelease/res/values-zh/static_strings.xml
+new file mode 100644
+index 0000000..d1c6908
+--- /dev/null
++++ b/app/src/forkRelease/res/values-zh/static_strings.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="app_name">KEMI 浏览器</string>
++    <string name="firefox">KEMI 浏览器</string>
++    <string name="app_name_firefox">KEMI 浏览器</string>
++    <string name="home_screen_shortcut_single_screen">单屏模式</string>
++</resources>
+diff --git a/app/src/forkRelease/res/values/static_strings.xml b/app/src/forkRelease/res/values/static_strings.xml
+index 62c8daf..bd69dbd 100644
+--- a/app/src/forkRelease/res/values/static_strings.xml
++++ b/app/src/forkRelease/res/values/static_strings.xml
+@@ -1,11 +1,7 @@
+-<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+-<!-- This Source Code Form is subject to the terms of the Mozilla Public
+-   - License, v. 2.0. If a copy of the MPL was not distributed with this
+-   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
++<?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <!-- Name of the application -->
+-    <string name="app_name" translatable="false">双屏浏览器</string>
+-    <string name="firefox" translatable="false">KEMI 双屏浏览器</string>
+-    <string name="app_name_firefox" translatable="false">KEMI 双屏浏览器</string>
+-    <string name="home_screen_shortcut_single_screen" translatable="false">单屏模式</string>
++    <string name="app_name">KEMI Browser</string>
++    <string name="firefox">KEMI Browser</string>
++    <string name="app_name_firefox">KEMI Browser</string>
++    <string name="home_screen_shortcut_single_screen">Single screen</string>
+ </resources>
+diff --git a/app/src/forkRelease/res/xml/shortcuts.xml b/app/src/forkRelease/res/xml/shortcuts.xml
+index 9bb5ee3..3e971e9 100644
+--- a/app/src/forkRelease/res/xml/shortcuts.xml
++++ b/app/src/forkRelease/res/xml/shortcuts.xml
+@@ -11,7 +11,7 @@
+         android:shortcutLongLabel="@string/home_screen_shortcut_single_screen">
+         <intent
+             android:action="android.intent.action.MAIN"
+-            android:targetPackage="io.github.forkmaintainers.iceraven"
++            android:targetPackage="com.newlink.kemi.kbrowser"
+             android:targetClass="org.mozilla.fenix.dualscreen.SingleScreenBrowserActivity" />
+     </shortcut>
+     <shortcut
+@@ -22,7 +22,7 @@
+         android:shortcutLongLabel="@string/home_screen_shortcut_open_new_tab_2">
+         <intent
+             android:action="org.mozilla.fenix.OPEN_TAB"
+-            android:targetPackage="io.github.forkmaintainers.iceraven"
++            android:targetPackage="com.newlink.kemi.kbrowser"
+             android:targetClass="org.mozilla.fenix.IntentReceiverActivity" />
+     </shortcut>
+     <shortcut
+@@ -33,7 +33,7 @@
+         android:shortcutLongLabel="@string/home_screen_shortcut_open_new_private_tab_2">
+         <intent
+             android:action="org.mozilla.fenix.OPEN_PRIVATE_TAB"
+-            android:targetPackage="io.github.forkmaintainers.iceraven"
++            android:targetPackage="com.newlink.kemi.kbrowser"
+             android:targetClass="org.mozilla.fenix.IntentReceiverActivity" />
+     </shortcut>
+ </shortcuts>
+diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dual_screen_home.html
+index b53f860..6ae2e91 100644
+--- a/app/src/main/assets/dual_screen_home.html
++++ b/app/src/main/assets/dual_screen_home.html
+@@ -3,7 +3,7 @@
+ <head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width,initial-scale=1">
+-  <title>双屏浏览器</title>
++  <title>KEMI 浏览器</title>
+   <style>
+     * { box-sizing: border-box; }
+     body { margin: 0; padding: 86px 6vw 120px; color: #172033; background: #f5f7fa; font: 28px/1.5 system-ui, sans-serif; }
+@@ -23,29 +23,144 @@
+ </head>
+ <body>
+   <header>
+-    <div><h1>双屏浏览器</h1><p class="sub">知识、文档与学习站点</p></div>
+-    <form action="https://www.baidu.com/s" method="get">
+-      <input name="wd" aria-label="搜索内容" placeholder="搜索知识或输入问题" autocomplete="off">
+-      <button type="submit">搜索</button>
++    <div><h1 id="title">KEMI 浏览器</h1><p class="sub" id="subtitle">知识、文档与学习站点</p></div>
++    <form id="searchForm" action="https://www.baidu.com/s" method="get">
++      <input id="searchInput" name="wd" aria-label="搜索内容" placeholder="搜索知识或输入问题" autocomplete="off">
++      <button id="searchBtn" type="submit">搜索</button>
+     </form>
+   </header>
+-  <div class="grid">
+-    <a href="https://www.baidu.com/">百度<span>知识搜索</span></a>
+-    <a href="https://baike.baidu.com/">百度百科<span>中文百科</span></a>
+-    <a href="https://www.zhihu.com/">知乎<span>问答社区</span></a>
+-    <a href="https://www.tianya.net/index.html" target="_self">天涯社区<span>中文社区精选</span></a>
+-    <a href="https://developer.mozilla.org/zh-CN/">MDN<span>Web 开发文档</span></a>
+-    <a href="https://www.w3.org/">W3C<span>Web 标准</span></a>
+-    <a href="https://www.cnki.net/">中国知网<span>学术检索</span></a>
+-    <a href="https://www.nlc.cn/">国家图书馆<span>文献资源</span></a>
+-    <a href="https://www.icourse163.org/">中国大学MOOC<span>在线课程</span></a>
+-    <a href="https://www.guokr.com/">果壳<span>科学知识</span></a>
+-    <a href="https://www.oschina.net/">开源中国<span>技术社区</span></a>
+-    <a href="https://kemi.newlinksz.com/kd/">KEMI 知识库<span>内部知识与文档</span></a>
+-    <a href="https://kemi-chat.newlinksz.com:21121/km100">KEMI Top 100<span>开源项目星图</span></a>
+-    <a href="https://kemi-chat.newlinksz.com:21121/top300">GitHub Top 300<span>热门开源项目</span></a>
+-  </div>
+-  <div class="guide">KEMI 双屏浏览器：一页跨双屏，内容自然衔接，双屏都能流畅操作。</div>
++  <div class="grid" id="sites"></div>
++  <div class="guide" id="guide">KEMI 浏览器：一页跨双屏，内容自然衔接，双屏都能流畅操作。</div>
+   <div class="spacer" aria-hidden="true"></div>
++  <script>
++(function () {
++  // Same layout, URLs, and card set for every locale — only labels are translated.
++  var sites = [
++    ["https://www.baidu.com/", "baidu"],
++    ["https://baike.baidu.com/", "baike"],
++    ["https://www.zhihu.com/", "zhihu"],
++    ["https://www.tianya.net/index.html", "tianya"],
++    ["https://developer.mozilla.org/zh-CN/", "mdn"],
++    ["https://www.w3.org/", "w3c"],
++    ["https://www.cnki.net/", "cnki"],
++    ["https://www.nlc.cn/", "nlc"],
++    ["https://www.icourse163.org/", "mooc"],
++    ["https://www.guokr.com/", "guokr"],
++    ["https://www.oschina.net/", "oschina"],
++    ["https://kemi.newlinksz.com/kd/", "knowledge"],
++    ["https://kemi-chat.newlinksz.com:21121/km100", "top100"],
++    ["https://kemi-chat.newlinksz.com:21121/top300", "top300"]
++  ];
++
++  var copy = {
++    en: {
++      title: "KEMI Browser",
++      subtitle: "Knowledge, documents, and learning sites",
++      searchPh: "Search knowledge or ask a question",
++      searchAria: "Search",
++      searchBtn: "Search",
++      guide: "KEMI Browser: one page across two screens, continuous content, smooth on both displays.",
++      cards: {
++        baidu: ["Baidu", "Knowledge search"],
++        baike: ["Baidu Baike", "Encyclopedia"],
++        zhihu: ["Zhihu", "Q&A community"],
++        tianya: ["Tianya", "Community picks"],
++        mdn: ["MDN", "Web docs"],
++        w3c: ["W3C", "Web standards"],
++        cnki: ["CNKI", "Academic search"],
++        nlc: ["National Library", "Documents"],
++        mooc: ["China MOOC", "Online courses"],
++        guokr: ["Guokr", "Science"],
++        oschina: ["OSChina", "Tech community"],
++        knowledge: ["KEMI Knowledge", "Internal docs"],
++        top100: ["KEMI Top 100", "Project map"],
++        top300: ["GitHub Top 300", "Popular projects"]
++      }
++    },
++    cn: {
++      title: "KEMI 浏览器",
++      subtitle: "知识、文档与学习站点",
++      searchPh: "搜索知识或输入问题",
++      searchAria: "搜索内容",
++      searchBtn: "搜索",
++      guide: "KEMI 浏览器：一页跨双屏，内容自然衔接，双屏都能流畅操作。",
++      cards: {
++        baidu: ["百度", "知识搜索"],
++        baike: ["百度百科", "中文百科"],
++        zhihu: ["知乎", "问答社区"],
++        tianya: ["天涯社区", "中文社区精选"],
++        mdn: ["MDN", "Web 开发文档"],
++        w3c: ["W3C", "Web 标准"],
++        cnki: ["中国知网", "学术检索"],
++        nlc: ["国家图书馆", "文献资源"],
++        mooc: ["中国大学MOOC", "在线课程"],
++        guokr: ["果壳", "科学知识"],
++        oschina: ["开源中国", "技术社区"],
++        knowledge: ["KEMI 知识库", "内部知识与文档"],
++        top100: ["KEMI Top 100", "开源项目星图"],
++        top300: ["GitHub Top 300", "热门开源项目"]
++      }
++    },
++    tw: {
++      title: "KEMI 瀏覽器",
++      subtitle: "知識、文件與學習網站",
++      searchPh: "搜尋知識或輸入問題",
++      searchAria: "搜尋內容",
++      searchBtn: "搜尋",
++      guide: "KEMI 瀏覽器：一頁跨雙螢幕，內容自然銜接，雙螢幕都能流暢操作。",
++      cards: {
++        baidu: ["百度", "知識搜尋"],
++        baike: ["百度百科", "中文百科"],
++        zhihu: ["知乎", "問答社群"],
++        tianya: ["天涯社區", "中文社區精選"],
++        mdn: ["MDN", "Web 開發文件"],
++        w3c: ["W3C", "Web 標準"],
++        cnki: ["中國知網", "學術檢索"],
++        nlc: ["國家圖書館", "文獻資源"],
++        mooc: ["中國大學MOOC", "線上課程"],
++        guokr: ["果殼", "科學知識"],
++        oschina: ["開源中國", "技術社群"],
++        knowledge: ["KEMI 知識庫", "內部知識與文件"],
++        top100: ["KEMI Top 100", "開源專案星圖"],
++        top300: ["GitHub Top 300", "熱門開源專案"]
++      }
++    }
++  };
++
++  var forced = null;
++  try {
++    forced = new URLSearchParams(location.search).get("lang");
++  } catch (e) {}
++  var lang = (navigator.language || "en").toLowerCase();
++  var isTw = lang.indexOf("zh-tw") === 0 || lang.indexOf("zh-hk") === 0 || lang.indexOf("zh-hant") === 0 || lang.indexOf("zh-hans") === -1 && lang.indexOf("hant") >= 0;
++  var isZh = lang.indexOf("zh") === 0;
++  var L = (forced === "tw" || forced === "cn" || forced === "en")
++    ? forced
++    : (isTw ? "tw" : (isZh ? "cn" : "en"));
++  var t = copy[L];
++
++  document.documentElement.lang = L === "tw" ? "zh-Hant" : (L === "cn" ? "zh-CN" : "en");
++  document.title = t.title;
++  document.getElementById("title").textContent = t.title;
++  document.getElementById("subtitle").textContent = t.subtitle;
++  document.getElementById("guide").textContent = t.guide;
++  document.getElementById("searchBtn").textContent = t.searchBtn;
++  var input = document.getElementById("searchInput");
++  input.placeholder = t.searchPh;
++  input.setAttribute("aria-label", t.searchAria);
++
++  var grid = document.getElementById("sites");
++  sites.forEach(function (item) {
++    var labels = t.cards[item[1]];
++    var a = document.createElement("a");
++    a.href = item[0];
++    a.textContent = labels[0];
++    var span = document.createElement("span");
++    span.textContent = labels[1];
++    a.appendChild(span);
++    grid.appendChild(a);
++  });
++})();
++  </script>
+ </body>
+ </html>
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserReadAloudController.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserReadAloudController.kt
+index e7890cc..7acfaa8 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserReadAloudController.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserReadAloudController.kt
+@@ -1,5 +1,7 @@
+ package org.mozilla.fenix.dualscreen
+ 
++import org.mozilla.fenix.R
++
+ import android.content.Context
+ import android.os.Bundle
+ import android.os.Handler
+@@ -53,7 +55,7 @@ internal class BrowserReadAloudController(
+     private var prefetchIndex = -1
+     private var prefetching = false
+     private var waitingForPrefetch = false
+-    private var lastUiState = BrowserTtsUiState(BrowserTtsState.IDLE, "朗读")
++    private var lastUiState = BrowserTtsUiState(BrowserTtsState.IDLE, appContext.getString(R.string.kbrowser_tts_label))
+ 
+     init {
+         localTts = TextToSpeech(appContext) { result ->
+@@ -80,7 +82,7 @@ internal class BrowserReadAloudController(
+ 
+                         @Deprecated("Deprecated in Java")
+                         override fun onError(utteranceId: String?) {
+-                            mainHandler.post { fail("系统朗读失败") }
++                            mainHandler.post { fail(appContext.getString(R.string.kbrowser_tts_system_failed)) }
+                         }
+                     })
+                 }
+@@ -104,12 +106,12 @@ internal class BrowserReadAloudController(
+         stopInternal(clearQueue = true)
+         val token = ++generation
+         state = BrowserTtsState.LOADING
+-        emit("正在提取当前页面…")
++        emit(appContext.getString(R.string.kbrowser_tts_extracting))
+         Log.i(TAG, "TTS_EXTRACT_REQUEST generation=$token")
+         requestPageText(token)
+         mainHandler.postDelayed({
+             if (generation == token && state == BrowserTtsState.LOADING) {
+-                fail("页面文字提取超时")
++                fail(appContext.getString(R.string.kbrowser_tts_extract_timeout))
+             }
+         }, EXTRACTION_TIMEOUT_MS)
+     }
+@@ -123,7 +125,7 @@ internal class BrowserReadAloudController(
+         chunks.clear()
+         chunks += SpeechTextSegmenter.split(sanitized)
+         if (chunks.isEmpty()) {
+-            fail("当前页面没有检测到可朗读文字")
++            fail(appContext.getString(R.string.kbrowser_tts_no_text))
+             return
+         }
+         chunkIndex = 0
+@@ -146,7 +148,7 @@ internal class BrowserReadAloudController(
+         localTts?.stop()
+         resetPrefetch()
+         state = BrowserTtsState.PAUSED
+-        emit("已暂停 · 第 ${chunkIndex + 1}/${chunks.size} 段")
++        emit(appContext.getString(R.string.kbrowser_tts_paused, chunkIndex + 1, chunks.size))
+         Log.i(TAG, "TTS_PAUSE index=$chunkIndex")
+     }
+ 
+@@ -163,7 +165,7 @@ internal class BrowserReadAloudController(
+         stopInternal(clearQueue = true)
+         state = BrowserTtsState.IDLE
+         clearHighlight()
+-        emit("朗读")
++        emit(appContext.getString(R.string.kbrowser_tts_label))
+         Log.i(TAG, "TTS_STOP reason=$reason")
+     }
+ 
+@@ -181,7 +183,7 @@ internal class BrowserReadAloudController(
+             return
+         }
+         state = BrowserTtsState.SPEAKING
+-        emit("正在朗读 · 第 ${chunkIndex + 1}/${chunks.size} 段")
++        emit(appContext.getString(R.string.kbrowser_tts_speaking, chunkIndex + 1, chunks.size))
+         val chunk = chunks[chunkIndex]
+         followChunk(chunk)
+         Log.i(TAG, "TTS_CHUNK_START index=$chunkIndex/${chunks.size} chars=${chunk.length}")
+@@ -252,7 +254,7 @@ internal class BrowserReadAloudController(
+         waitingForPrefetch = false
+         state = BrowserTtsState.SPEAKING
+         usingIflytek = true
+-        emit("正在朗读 · 第 ${chunkIndex + 1}/${chunks.size} 段")
++        emit(appContext.getString(R.string.kbrowser_tts_speaking, chunkIndex + 1, chunks.size))
+         followChunk(chunks[chunkIndex])
+         Log.i(TAG, "TTS_PREFETCH_PLAY index=$chunkIndex/${chunks.size}")
+         iflytek.play(clip, object : IflytekTtsEngine.Listener {
+@@ -284,7 +286,7 @@ internal class BrowserReadAloudController(
+             playPrefetched(token)
+         } else if (prefetching && prefetchIndex == chunkIndex) {
+             waitingForPrefetch = true
+-            emit("正在缓冲 · 第 ${chunkIndex + 1}/${chunks.size} 段")
++            emit(appContext.getString(R.string.kbrowser_tts_buffering, chunkIndex + 1, chunks.size))
+         } else {
+             speakCurrent(token)
+         }
+@@ -297,7 +299,7 @@ internal class BrowserReadAloudController(
+         usingIflytek = false
+         val engine = localTts
+         if (!localReady || engine == null) {
+-            fail(cloudError ?: "系统朗读引擎不可用")
++            fail(cloudError ?: appContext.getString(R.string.kbrowser_tts_engine_unavailable))
+             return
+         }
+         if (cloudError != null) Log.w(TAG, "Cloud TTS unavailable; using Android TTS: $cloudError")
+@@ -308,7 +310,7 @@ internal class BrowserReadAloudController(
+             options,
+             "kbrowser-$token-$chunkIndex",
+         )
+-        if (result == TextToSpeech.ERROR) fail("系统朗读启动失败")
++        if (result == TextToSpeech.ERROR) fail(appContext.getString(R.string.kbrowser_tts_engine_start_failed))
+     }
+ 
+     private fun finishReading() {
+@@ -318,9 +320,9 @@ internal class BrowserReadAloudController(
+         stopInternal(clearQueue = true)
+         state = BrowserTtsState.IDLE
+         clearHighlight()
+-        emit("朗读完成")
++        emit(appContext.getString(R.string.kbrowser_tts_done))
+         mainHandler.postDelayed({
+-            if (state == BrowserTtsState.IDLE) emit("朗读")
++            if (state == BrowserTtsState.IDLE) emit(appContext.getString(R.string.kbrowser_tts_label))
+         }, 1_500L)
+     }
+ 
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 4318110..61212aa 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -1,5 +1,7 @@
+ package org.mozilla.fenix.dualscreen
+ 
++import org.mozilla.fenix.R
++
+ import android.app.Activity
+ import android.app.ActivityOptions
+ import android.app.AlertDialog
+@@ -122,17 +124,19 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         requestWindowFeature(Window.FEATURE_NO_TITLE)
+         configureTargetHardwareWindow()
+-        val url = intent.getStringExtra(EXTRA_URL)
+-            ?: intent.data?.getQueryParameter("url")
+-            ?: intent.data?.toString()?.takeIf { intent.action == Intent.ACTION_VIEW }
+-            ?: DEFAULT_URL
++        val resolved = resolveLaunchUrl(intent)
++        val url = if (isHomeUrl(resolved)) localizedHomeUrl(this) else resolved
+         val documentPath = intent.getStringExtra(DocumentReader.EXTRA_CACHE_PATH)
+ 
+         browserSurface = GeckoInputSurface(this).apply {
+-            layoutParams = ViewGroup.LayoutParams(
+-                ViewGroup.LayoutParams.MATCH_PARENT,
+-                ViewGroup.LayoutParams.MATCH_PARENT,
+-            )
++            layoutParams = FrameLayout.LayoutParams(
++                FrameLayout.LayoutParams.MATCH_PARENT,
++                FrameLayout.LayoutParams.MATCH_PARENT,
++            ).apply {
++                if (isTopDisplay) {
++                    topMargin = dp(TOOLBAR_HEIGHT_DP)
++                }
++            }
+             setOnTouchListener { _, event ->
+                 rememberMousePosition(event)
+                 DualScreenCoordinator.dispatchTouch(
+@@ -199,10 +203,8 @@ open class DualScreenBrowserActivity : Activity() {
+     override fun onNewIntent(intent: Intent) {
+         super.onNewIntent(intent)
+         setIntent(intent)
+-        val url = intent.getStringExtra(EXTRA_URL)
+-            ?: intent.data?.getQueryParameter("url")
+-            ?: intent.data?.toString()?.takeIf { intent.action == Intent.ACTION_VIEW }
+-            ?: DualScreenCoordinator.currentUrl()
++        val resolved = resolveLaunchUrl(intent, DualScreenCoordinator.currentUrl())
++        val url = if (isHomeUrl(resolved)) localizedHomeUrl(this) else resolved
+         val documentPath = intent.getStringExtra(DocumentReader.EXTRA_CACHE_PATH)
+         DualScreenCoordinator.attach(this, url, documentPath)
+         registerCurrentSurface()
+@@ -219,11 +221,27 @@ open class DualScreenBrowserActivity : Activity() {
+     }
+ 
+     private fun registerCurrentSurface() {
++        registerCurrentSurfaceForCompositor()
++    }
++
++    internal fun registerCurrentSurfaceForCompositor() {
+         if (::browserSurface.isInitialized && browserSurface.holder.surface.isValid) {
+             DualScreenCoordinator.outputAvailable(this, browserSurface.holder.surface)
+         }
+     }
+ 
++    /**
++     * Tear down and re-attach the SurfaceView so a new compositor can create a
++     * fresh EGL window surface. Reusing an Android Surface after EGL destroy
++     * leaves the bottom display permanently white.
++     */
++    internal fun rematerializeBrowserSurface() {
++        if (!::rootLayout.isInitialized || !::browserSurface.isInitialized) return
++        val params = browserSurface.layoutParams
++        rootLayout.removeView(browserSurface)
++        rootLayout.addView(browserSurface, 0, params)
++    }
++
+     private fun createToolbar(): View {
+         val container = FrameLayout(this).apply {
+             background = GradientDrawable().apply {
+@@ -255,27 +273,27 @@ open class DualScreenBrowserActivity : Activity() {
+                 dp(56),
+             )
+         }
+-        controls.addView(navButton("← 后退", "后退", dp(90)) { DualScreenCoordinator.goBack() })
+-        controls.addView(navButton("前进 →", "前进", dp(90)) { DualScreenCoordinator.goForward() })
+-        controls.addView(navButton("↻ 刷新", "刷新", dp(84)) { DualScreenCoordinator.reload() })
+-        controls.addView(navButton("⌂ 主页", "主页", dp(80)) {
+-            DualScreenCoordinator.navigate(HOME_URL)
++        controls.addView(navButton(getString(R.string.kbrowser_nav_back), getString(R.string.kbrowser_nav_back_desc), dp(90)) { DualScreenCoordinator.goBack() })
++        controls.addView(navButton(getString(R.string.kbrowser_nav_forward), getString(R.string.kbrowser_nav_forward_desc), dp(90)) { DualScreenCoordinator.goForward() })
++        controls.addView(navButton(getString(R.string.kbrowser_nav_reload), getString(R.string.kbrowser_nav_reload_desc), dp(84)) { DualScreenCoordinator.reload() })
++        controls.addView(navButton(getString(R.string.kbrowser_nav_home), getString(R.string.kbrowser_nav_home_desc), dp(80)) {
++            DualScreenCoordinator.navigate(localizedHomeUrl(this))
+         })
+-        controls.addView(navButton("☆ 收藏", "收藏当前页面", dp(80)) {
++        controls.addView(navButton(getString(R.string.kbrowser_nav_bookmark), getString(R.string.kbrowser_nav_bookmark_desc), dp(80)) {
+             addCurrentPageBookmark()
+         })
+-        controls.addView(navButton("☰ 收藏夹", "打开收藏夹", dp(92)) {
++        controls.addView(navButton(getString(R.string.kbrowser_nav_bookmarks), getString(R.string.kbrowser_nav_bookmarks_desc), dp(92)) {
+             showBookmarks()
+         })
+-        controls.addView(navButton("⇩ 下载", "查看下载目录", dp(80)) {
++        controls.addView(navButton(getString(R.string.kbrowser_nav_downloads), getString(R.string.kbrowser_nav_downloads_desc), dp(80)) {
+             openDownloads()
+         })
+-        val readAloud = navButton("🔊 朗读", "朗读网页", dp(90)) {
++        val readAloud = navButton(getString(R.string.kbrowser_nav_read_aloud), getString(R.string.kbrowser_nav_read_aloud_desc), dp(90)) {
+             DualScreenCoordinator.toggleReadAloud()
+         }
+         ttsButton = readAloud
+         controls.addView(readAloud)
+-        controls.addView(navButton("退出", "退出双屏浏览器", dp(70)) {
++        controls.addView(navButton(getString(R.string.kbrowser_nav_exit), getString(R.string.kbrowser_nav_exit_desc), dp(70)) {
+             DualScreenCoordinator.exitAll()
+         })
+         toolbar.addView(controls)
+@@ -290,7 +308,7 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+ 
+         val address = EditText(this).apply {
+-            hint = "搜索或输入网址（完整显示当前地址）"
++            hint = getString(R.string.kbrowser_address_hint)
+             textSize = 16f
+             isSingleLine = true
+             setSelectAllOnFocus(true)
+@@ -317,7 +335,7 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         addressField = address
+         addressRow.addView(address)
+-        addressRow.addView(navButton("打开", "打开网址", dp(106), true) {
++        addressRow.addView(navButton(getString(R.string.kbrowser_nav_go), getString(R.string.kbrowser_nav_go_desc), dp(106), true) {
+             submitAddress(address)
+         })
+         toolbar.addView(addressRow)
+@@ -354,14 +372,14 @@ open class DualScreenBrowserActivity : Activity() {
+             marginEnd = dp(12)
+         }
+         ttsStatus = TextView(this@DualScreenBrowserActivity).apply {
+-            text = "正在准备朗读…"
++            text = getString(R.string.kbrowser_tts_preparing)
+             textSize = 14f
+             setTextColor(Color.WHITE)
+             maxLines = 1
+             layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
+             gravity = Gravity.CENTER_VERTICAL
+         }.also(::addView)
+-        addView(navButton("■ 停止", "停止朗读", dp(78), emphasized = true) {
++        addView(navButton(getString(R.string.kbrowser_tts_stop), getString(R.string.kbrowser_tts_stop_desc), dp(78), emphasized = true) {
+             DualScreenCoordinator.stopReadAloud("user-stop")
+         }.apply {
+             setTextColor(Color.WHITE)
+@@ -438,7 +456,7 @@ open class DualScreenBrowserActivity : Activity() {
+         if (!isTopDisplay) return
+         addressField?.let { field ->
+             if (!field.hasFocus()) {
+-                val visibleUrl = if (url == HOME_URL || url == ABOUT_BLANK_URL) "" else url
++                val visibleUrl = if (isHomeUrl(url) || url == ABOUT_BLANK_URL) "" else url
+                 if (field.text.toString() != visibleUrl) field.setText(visibleUrl)
+             }
+         }
+@@ -446,7 +464,7 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     private fun normalizeInput(raw: String): String {
+         val input = raw.trim()
+-        if (input.isEmpty() || input == ABOUT_BLANK_URL || input == HOME_URL) {
++        if (input.isEmpty() || input == ABOUT_BLANK_URL || isHomeUrl(input)) {
+             return KEMI_KNOWLEDGE_URL
+         }
+         if (input.contains(' ') || (!input.contains('.') && !input.contains("://"))) {
+@@ -482,24 +500,24 @@ open class DualScreenBrowserActivity : Activity() {
+         runOnUiThread {
+             when (ui.state) {
+                 BrowserTtsState.IDLE -> {
+-                    ttsButton?.text = "🔊 朗读"
++                    ttsButton?.text = getString(R.string.kbrowser_nav_read_aloud)
+                     ttsOverlay?.visibility = View.GONE
+-                    if (ui.message != "朗读" && ui.message != "朗读完成") {
++                    if (ui.message != getString(R.string.kbrowser_tts_label) && ui.message != getString(R.string.kbrowser_tts_done)) {
+                         Toast.makeText(this, ui.message, Toast.LENGTH_SHORT).show()
+                     }
+                 }
+                 BrowserTtsState.LOADING -> {
+-                    ttsButton?.text = "… 准备"
++                    ttsButton?.text = getString(R.string.kbrowser_tts_ready)
+                     ttsStatus?.text = ui.message
+                     ttsOverlay?.visibility = View.VISIBLE
+                 }
+                 BrowserTtsState.SPEAKING -> {
+-                    ttsButton?.text = "⏸ 暂停"
++                    ttsButton?.text = getString(R.string.kbrowser_tts_pause)
+                     ttsStatus?.text = ui.message
+                     ttsOverlay?.visibility = View.VISIBLE
+                 }
+                 BrowserTtsState.PAUSED -> {
+-                    ttsButton?.text = "▶ 继续"
++                    ttsButton?.text = getString(R.string.kbrowser_tts_resume)
+                     ttsStatus?.text = ui.message
+                     ttsOverlay?.visibility = View.VISIBLE
+                 }
+@@ -573,18 +591,18 @@ open class DualScreenBrowserActivity : Activity() {
+                         menu.add(0, id, order, title).setIcon(icon)
+ 
+                     if (!linkUri.isNullOrBlank()) {
+-                        addItem(1, 0, "打开链接", android.R.drawable.ic_menu_view)
+-                        addItem(2, 1, "复制链接", android.R.drawable.ic_menu_share)
+-                        addItem(8, 2, "下载链接", android.R.drawable.stat_sys_download)
++                        addItem(1, 0, getString(R.string.kbrowser_ctx_open_link), android.R.drawable.ic_menu_view)
++                        addItem(2, 1, getString(R.string.kbrowser_ctx_copy_link), android.R.drawable.ic_menu_share)
++                        addItem(8, 2, getString(R.string.kbrowser_ctx_download_link), android.R.drawable.stat_sys_download)
+                         if (!linkText.isNullOrBlank()) {
+-                            addItem(3, 3, "复制链接文字", android.R.drawable.ic_menu_edit)
++                            addItem(3, 3, getString(R.string.kbrowser_ctx_copy_link_text), android.R.drawable.ic_menu_edit)
+                         }
+                     }
+                     if (!mediaUri.isNullOrBlank()) {
+-                        addItem(4, 3, "打开图片或媒体", android.R.drawable.ic_menu_gallery)
+-                        addItem(5, 4, "复制图片或媒体地址", android.R.drawable.ic_menu_save)
++                        addItem(4, 3, getString(R.string.kbrowser_ctx_open_media), android.R.drawable.ic_menu_gallery)
++                        addItem(5, 4, getString(R.string.kbrowser_ctx_copy_media), android.R.drawable.ic_menu_save)
+                     }
+-                    addItem(6, 6, "复制所选内容", android.R.drawable.ic_menu_edit)
++                    addItem(6, 6, getString(R.string.kbrowser_ctx_copy_selection), android.R.drawable.ic_menu_edit)
+                     val clipboard =
+                         getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                     val pasteText = clipboard.primaryClip
+@@ -592,29 +610,29 @@ open class DualScreenBrowserActivity : Activity() {
+                         ?.getItemAt(0)
+                         ?.coerceToText(this@DualScreenBrowserActivity)
+                         ?.toString()
+-                    addItem(7, 7, "粘贴", android.R.drawable.ic_menu_send).apply {
++                    addItem(7, 7, getString(R.string.kbrowser_ctx_paste), android.R.drawable.ic_menu_send).apply {
+                         isEnabled = !pasteText.isNullOrEmpty()
+                     }
+-                    addItem(10, 10, "后退", android.R.drawable.ic_media_previous)
+-                    addItem(11, 11, "前进", android.R.drawable.ic_media_next)
+-                    addItem(12, 12, "刷新", android.R.drawable.ic_popup_sync)
+-                    addItem(13, 13, "返回主页", android.R.drawable.ic_menu_view)
+-                    addItem(14, 14, "复制当前网址", android.R.drawable.ic_menu_set_as)
++                    addItem(10, 10, getString(R.string.kbrowser_ctx_back), android.R.drawable.ic_media_previous)
++                    addItem(11, 11, getString(R.string.kbrowser_ctx_forward), android.R.drawable.ic_media_next)
++                    addItem(12, 12, getString(R.string.kbrowser_ctx_reload), android.R.drawable.ic_popup_sync)
++                    addItem(13, 13, getString(R.string.kbrowser_ctx_home), android.R.drawable.ic_menu_view)
++                    addItem(14, 14, getString(R.string.kbrowser_ctx_copy_url), android.R.drawable.ic_menu_set_as)
+                     setOnMenuItemClickListener { item ->
+                         when (item.itemId) {
+                             1 -> DualScreenCoordinator.navigate(linkUri.orEmpty())
+-                            2 -> copyText("链接", linkUri.orEmpty())
++                            2 -> copyText(getString(R.string.kbrowser_label_link), linkUri.orEmpty())
+                             8 -> downloadUrl(linkUri.orEmpty())
+-                            3 -> copyText("链接文字", linkText.orEmpty())
++                            3 -> copyText(getString(R.string.kbrowser_label_link_text), linkText.orEmpty())
+                             4 -> DualScreenCoordinator.navigate(mediaUri.orEmpty())
+-                            5 -> copyText("媒体地址", mediaUri.orEmpty())
++                            5 -> copyText(getString(R.string.kbrowser_label_media), mediaUri.orEmpty())
+                             6 -> copySelectedText(linkText)
+-                            7 -> performTextAction(android.R.id.paste, "已粘贴")
++                            7 -> performTextAction(android.R.id.paste, getString(R.string.kbrowser_toast_pasted))
+                             10 -> DualScreenCoordinator.goBack()
+                             11 -> DualScreenCoordinator.goForward()
+                             12 -> DualScreenCoordinator.reload()
+-                            13 -> DualScreenCoordinator.navigate(HOME_URL)
+-                            14 -> copyText("网址", DualScreenCoordinator.currentUrl())
++                            13 -> DualScreenCoordinator.navigate(localizedHomeUrl(this@DualScreenBrowserActivity))
++                            14 -> copyText(getString(R.string.kbrowser_label_url), DualScreenCoordinator.currentUrl())
+                             else -> return@setOnMenuItemClickListener false
+                         }
+                         true
+@@ -680,7 +698,7 @@ open class DualScreenBrowserActivity : Activity() {
+     private fun copyText(label: String, value: String) {
+         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+         clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
+-        Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
++        Toast.makeText(this, getString(R.string.kbrowser_toast_copied), Toast.LENGTH_SHORT).show()
+     }
+ 
+     private fun copySelectedText(linkTextFallback: String?) {
+@@ -692,7 +710,7 @@ open class DualScreenBrowserActivity : Activity() {
+             ?: pendingMouseSelection?.takeIf { it.isNotBlank() }
+             ?: linkTextFallback?.takeIf { it.isNotBlank() }
+         if (directText != null) {
+-            copyText("所选内容", directText)
++            copyText(getString(R.string.kbrowser_label_selection), directText)
+             DualScreenCoordinator.clearSelectedText()
+             pendingMouseSelection = null
+             return
+@@ -708,7 +726,7 @@ open class DualScreenBrowserActivity : Activity() {
+                     afterTimestamp != null && afterTimestamp != beforeTimestamp
+                 Toast.makeText(
+                     this,
+-                    if (copied) "已复制" else "请先选择要复制的内容",
++                    if (copied) getString(R.string.kbrowser_toast_copied) else getString(R.string.kbrowser_toast_copy_empty),
+                     Toast.LENGTH_SHORT,
+                 ).show()
+                 if (copied) DualScreenCoordinator.clearSelectedText()
+@@ -729,7 +747,7 @@ open class DualScreenBrowserActivity : Activity() {
+         if (performed || committed) {
+             Toast.makeText(this, successMessage, Toast.LENGTH_SHORT).show()
+         } else {
+-            Toast.makeText(this, "当前页面没有可操作的文字输入位置", Toast.LENGTH_SHORT).show()
++            Toast.makeText(this, getString(R.string.kbrowser_toast_no_text_input), Toast.LENGTH_SHORT).show()
+         }
+     }
+ 
+@@ -737,7 +755,7 @@ open class DualScreenBrowserActivity : Activity() {
+     private fun addCurrentPageBookmark() {
+         val url = DualScreenCoordinator.currentUrl()
+         if (!url.startsWith("http://") && !url.startsWith("https://")) {
+-            Toast.makeText(this, "当前页面不能收藏", Toast.LENGTH_SHORT).show()
++            Toast.makeText(this, getString(R.string.kbrowser_bookmark_unavailable), Toast.LENGTH_SHORT).show()
+             return
+         }
+         val title = addressField?.text?.toString()?.takeIf { it.isNotBlank() } ?: url
+@@ -747,7 +765,7 @@ open class DualScreenBrowserActivity : Activity() {
+             }
+             Toast.makeText(
+                 this@DualScreenBrowserActivity,
+-                if (result.guidToEdit != null) "已收藏到书签" else "该页面已在书签中",
++                if (result.guidToEdit != null) getString(R.string.kbrowser_bookmark_added) else getString(R.string.kbrowser_bookmark_exists),
+                 Toast.LENGTH_SHORT,
+             ).show()
+         }
+@@ -808,24 +826,24 @@ open class DualScreenBrowserActivity : Activity() {
+             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+         }
+         headerCopy.addView(TextView(this).apply {
+-            text = "收藏夹"
++            text = getString(R.string.kbrowser_bookmarks_title)
+             textSize = 22f
+             setTextColor(Color.WHITE)
+             setTypeface(typeface, android.graphics.Typeface.BOLD)
+         })
+         headerCopy.addView(TextView(this).apply {
+-            text = if (bookmarks.isEmpty()) "保存常用页面，随时继续阅读" else "已保存 ${bookmarks.size} 个页面"
++            text = if (bookmarks.isEmpty()) getString(R.string.kbrowser_bookmarks_empty_hint) else getString(R.string.kbrowser_bookmarks_count, bookmarks.size)
+             textSize = 14f
+             setTextColor(Color.rgb(222, 238, 255))
+             setPadding(0, dp(3), 0, 0)
+         })
+         header.addView(headerCopy)
+         header.addView(TextView(this).apply {
+-            text = "关闭"
++            text = getString(R.string.kbrowser_bookmarks_close)
+             textSize = 15f
+             gravity = Gravity.CENTER
+             setTextColor(Color.WHITE)
+-            contentDescription = "关闭收藏夹"
++            contentDescription = getString(R.string.kbrowser_bookmarks_close_desc)
+             background = selectableBackground(Color.argb(42, 255, 255, 255))
+             setPadding(dp(16), dp(10), dp(16), dp(10))
+             setOnClickListener { dialog.dismiss() }
+@@ -846,14 +864,14 @@ open class DualScreenBrowserActivity : Activity() {
+                 setTextColor(brandBlue)
+             })
+             content.addView(TextView(this).apply {
+-                text = "还没有收藏页面"
++                text = getString(R.string.kbrowser_bookmarks_empty_title)
+                 gravity = Gravity.CENTER
+                 textSize = 18f
+                 setTextColor(ink)
+                 setPadding(0, dp(10), 0, dp(4))
+             })
+             content.addView(TextView(this).apply {
+-                text = "浏览网页时点按“收藏”，常用页面会显示在这里。"
++                text = getString(R.string.kbrowser_bookmarks_empty_body)
+                 gravity = Gravity.CENTER
+                 textSize = 14f
+                 setTextColor(muted)
+@@ -896,7 +914,7 @@ open class DualScreenBrowserActivity : Activity() {
+         gravity = Gravity.CENTER_VERTICAL
+         setPadding(dp(17), dp(10), dp(13), dp(10))
+         background = selectableBackground(Color.rgb(255, 255, 255), Color.rgb(214, 228, 248))
+-        contentDescription = "打开收藏：${bookmark.title}"
++        contentDescription = getString(R.string.kbrowser_bookmarks_open_desc, bookmark.title)
+         val icon = TextView(this@DualScreenBrowserActivity).apply {
+             text = "★"
+             textSize = 20f
+@@ -929,18 +947,18 @@ open class DualScreenBrowserActivity : Activity() {
+         })
+         addView(copy, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+         addView(TextView(this@DualScreenBrowserActivity).apply {
+-            text = "打开  ›"
++            text = getString(R.string.kbrowser_bookmarks_open)
+             textSize = 14f
+             gravity = Gravity.CENTER
+             setTextColor(brandBlue)
+             setPadding(dp(10), dp(10), dp(8), dp(10))
+         })
+         addView(TextView(this@DualScreenBrowserActivity).apply {
+-            text = "删除"
++            text = getString(R.string.kbrowser_bookmarks_delete)
+             textSize = 14f
+             gravity = Gravity.CENTER
+             setTextColor(Color.rgb(190, 69, 76))
+-            contentDescription = "删除收藏：${bookmark.title}"
++            contentDescription = getString(R.string.kbrowser_bookmarks_delete_desc, bookmark.title)
+             background = selectableBackground(Color.rgb(255, 246, 246), Color.rgb(255, 229, 230))
+             setPadding(dp(11), dp(8), dp(11), dp(8))
+             setOnClickListener { confirmDeleteBookmark(bookmark, dialog) }
+@@ -953,20 +971,20 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     private fun confirmDeleteBookmark(bookmark: BookmarkListItem, bookmarksDialog: AlertDialog) {
+         AlertDialog.Builder(this)
+-            .setTitle("删除收藏？")
+-            .setMessage("“${bookmark.title}”将从收藏夹移除。")
+-            .setNegativeButton("取消", null)
+-            .setPositiveButton("删除") { _, _ ->
++            .setTitle(getString(R.string.kbrowser_bookmarks_delete_title))
++            .setMessage(getString(R.string.kbrowser_bookmarks_delete_message, bookmark.title))
++            .setNegativeButton(getString(R.string.kbrowser_bookmarks_cancel), null)
++            .setPositiveButton(getString(R.string.kbrowser_bookmarks_delete)) { _, _ ->
+                 CoroutineScope(Dispatchers.Main).launch {
+                     val deleted = withContext(Dispatchers.IO) {
+                         components.core.bookmarksStorage.deleteNode(bookmark.guid).getOrDefault(false)
+                     }
+                     if (deleted) {
+                         bookmarksDialog.dismiss()
+-                        Toast.makeText(this@DualScreenBrowserActivity, "已删除收藏", Toast.LENGTH_SHORT).show()
++                        Toast.makeText(this@DualScreenBrowserActivity, getString(R.string.kbrowser_bookmarks_deleted), Toast.LENGTH_SHORT).show()
+                         showBookmarks()
+                     } else {
+-                        Toast.makeText(this@DualScreenBrowserActivity, "删除失败，请重试", Toast.LENGTH_SHORT).show()
++                        Toast.makeText(this@DualScreenBrowserActivity, getString(R.string.kbrowser_bookmarks_delete_failed), Toast.LENGTH_SHORT).show()
+                     }
+                 }
+             }
+@@ -996,26 +1014,26 @@ open class DualScreenBrowserActivity : Activity() {
+         runCatching {
+             startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+         }.onFailure {
+-            Toast.makeText(this, "当前没有可查看的下载", Toast.LENGTH_SHORT).show()
++            Toast.makeText(this, getString(R.string.kbrowser_downloads_empty), Toast.LENGTH_SHORT).show()
+         }
+     }
+ 
+     /** Enqueues a link with the system DownloadManager so direct file links work on both modes. */
+     internal fun downloadUrl(url: String) {
+         if (!url.startsWith("http://") && !url.startsWith("https://")) {
+-            Toast.makeText(this, "此链接不能下载", Toast.LENGTH_SHORT).show()
++            Toast.makeText(this, getString(R.string.kbrowser_download_unsupported), Toast.LENGTH_SHORT).show()
+             return
+         }
+         val fileName = URLUtil.guessFileName(url, null, null).ifBlank { "kemi-download" }
+         val request = DownloadManager.Request(android.net.Uri.parse(url)).apply {
+             setTitle(fileName)
+-            setDescription("保存到 Download/双屏浏览器")
++            setDescription(getString(R.string.kbrowser_download_notification_desc, getString(R.string.kbrowser_download_folder)))
+             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+             setAllowedOverMetered(true)
+             setAllowedOverRoaming(false)
+             setDestinationInExternalPublicDir(
+                 Environment.DIRECTORY_DOWNLOADS,
+-                "双屏浏览器/$fileName",
++                getString(R.string.kbrowser_download_path, getString(R.string.kbrowser_download_folder), fileName),
+             )
+             addRequestHeader("Referer", DualScreenCoordinator.currentUrl())
+         }
+@@ -1024,12 +1042,12 @@ open class DualScreenBrowserActivity : Activity() {
+         }.onSuccess {
+             Toast.makeText(
+                 this,
+-                "已加入下载：Download/双屏浏览器/$fileName",
++                getString(R.string.kbrowser_download_queued, getString(R.string.kbrowser_download_folder), fileName),
+                 Toast.LENGTH_LONG,
+             ).show()
+         }.onFailure {
+             Log.w("KBrowserDownload", "Unable to enqueue download url=$url", it)
+-            Toast.makeText(this, "下载启动失败", Toast.LENGTH_SHORT).show()
++            Toast.makeText(this, getString(R.string.kbrowser_download_failed), Toast.LENGTH_SHORT).show()
+         }
+     }
+ 
+@@ -1120,6 +1138,38 @@ open class DualScreenBrowserActivity : Activity() {
+         const val TARGET_REFRESH_RATE = 60f
+         const val MOUSE_BACK_GRACE_PERIOD_MS = 3_000L
+         const val PEER_LAUNCH_GRACE_MS = 750L
++
++        internal fun isHomeUrl(url: String?): Boolean =
++            !url.isNullOrBlank() && (url == HOME_URL || url.startsWith("$HOME_URL?"))
++
++        internal fun localizedHomeUrl(context: Context): String {
++            val locale = context.resources.configuration.locales[0]
++            val lang = when {
++                locale.language.equals("zh", ignoreCase = true) &&
++                    (
++                        locale.country.equals("TW", ignoreCase = true) ||
++                            locale.country.equals("HK", ignoreCase = true) ||
++                            locale.script.equals("Hant", ignoreCase = true)
++                        ) -> "tw"
++                locale.language.equals("zh", ignoreCase = true) -> "cn"
++                else -> "en"
++            }
++            return "$HOME_URL?lang=$lang"
++        }
++
++        internal fun resolveLaunchUrl(intent: Intent, fallback: String = DEFAULT_URL): String {
++            intent.getStringExtra(EXTRA_URL)?.takeIf { it.isNotBlank() }?.let { return it }
++            val data = intent.data ?: return fallback
++            data.getQueryParameter("url")?.takeIf { it.isNotBlank() }?.let { return it }
++            val scheme = data.scheme?.lowercase()
++            if (scheme == "http" || scheme == "https" || scheme == "kbrowser-dual") {
++                return data.toString()
++            }
++            if (intent.action == Intent.ACTION_VIEW) {
++                return data.toString()
++            }
++            return fallback
++        }
+     }
+ }
+ 
+@@ -1184,10 +1234,25 @@ private object DualScreenCoordinator {
+             controller.get()?.takeIf { it !== activity }?.finishFromPair()
+             controller = WeakReference(activity)
+             ensureSession(activity, initialUrl, documentPath, singleScreen = false)
++            if (hadSession && session != null) {
++                // Force a fresh SurfaceView buffer after CLEAR_TOP recreates the
++                // controller; reusing one after EGL destroy leaves display 0 white.
++                activity.rematerializeBrowserSurface()
++                if (documentPath != null && documentPath != currentDocumentPath) {
++                    loadDocument(activity, requireNotNull(session), documentPath, initialUrl)
++                } else if (documentPath == null && initialUrl.isNotBlank()) {
++                    currentDocumentPath = null
++                    currentUrl = initialUrl
++                    session?.loadUri(initialUrl)
++                }
++            }
+         }
+-        if (hadSession && session != null && documentPath != null && documentPath != currentDocumentPath) {
++        if (hadSession && session != null && documentPath != null && documentPath != currentDocumentPath &&
++            activity.isTopDisplay
++        ) {
+             loadDocument(activity, requireNotNull(session), documentPath, initialUrl)
+         }
++        activity.registerCurrentSurfaceForCompositor()
+     }
+ 
+     @Synchronized
+@@ -1198,6 +1263,15 @@ private object DualScreenCoordinator {
+ 
+     @Synchronized
+     fun outputAvailable(activity: DualScreenBrowserActivity, surface: Surface?) {
++        // Stale SurfaceView callbacks from a finishing peer must not clear the slot
++        // that the replacement Activity already bound (display 0 goes white otherwise).
++        if (surface == null) {
++            if (activity.isTopDisplay) {
++                if (topDisplay.get() !== activity) return
++            } else {
++                if (controller.get() !== activity) return
++            }
++        }
+         val slot = if (activity.isTopDisplay) {
+             topSurface = surface
+             DualScreenSharedCompositor.Slot.TOP
+@@ -1217,9 +1291,7 @@ private object DualScreenCoordinator {
+             source.browserSurface.requestFocus()
+         }
+         val transformed = MotionEvent.obtain(event)
+-        if (source.isTopDisplay) {
+-            transformed.offsetLocation(0f, -source.toolbarHeightPx().toFloat())
+-        } else {
++        if (!source.isTopDisplay) {
+             transformed.offsetLocation(
+                 0f,
+                 (DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX -
+@@ -1237,9 +1309,7 @@ private object DualScreenCoordinator {
+     fun dispatchGenericMotion(source: DualScreenBrowserActivity, event: MotionEvent): Boolean {
+         val activeSession = session ?: return false
+         val transformed = MotionEvent.obtain(event)
+-        if (source.isTopDisplay) {
+-            transformed.offsetLocation(0f, -source.toolbarHeightPx().toFloat())
+-        } else {
++        if (!source.isTopDisplay) {
+             transformed.offsetLocation(
+                 0f,
+                 (DualScreenBrowserActivity.TARGET_VIEWPORT_HEIGHT_PX -
+@@ -1355,11 +1425,23 @@ private object DualScreenCoordinator {
+ 
+     @Synchronized
+     fun memberDestroyed(destroyedTopDisplay: Boolean) {
+-        if (!exiting) {
+-            val peer = if (destroyedTopDisplay) controller.get() else topDisplay.get()
+-            peer?.runOnUiThread { peer.finishFromPair() }
++        if (exiting) {
++            shutdownSession()
++            return
++        }
++        // Keep the shared Gecko session across singleTask/CLEAR_TOP recreates.
++        // Finishing the peer here permanently blanked the other display after
++        // DualScreenLaunchActivity routed a new URL.
++        if (destroyedTopDisplay) {
++            topSurface = null
++            compositor?.setOutput(DualScreenSharedCompositor.Slot.TOP, null)
++        } else {
++            bottomSurface = null
++            compositor?.setOutput(DualScreenSharedCompositor.Slot.BOTTOM, null)
++        }
++        if (controller.get() == null && topDisplay.get() == null) {
++            shutdownSession()
+         }
+-        shutdownSession()
+     }
+ 
+     @Synchronized
+@@ -1486,7 +1568,12 @@ private object DualScreenCoordinator {
+         }.also { it.install() }
+         val sharedCompositor = DualScreenSharedCompositor(
+             singleScreen = singleScreen,
+-            topChromeHeightPx = activity.toolbarHeightPx(),
++            topChromeHeightPx = if (singleScreen) {
++                0
++            } else {
++                // Prefer top display density for chrome height; fall back to controller.
++                (topDisplay.get() ?: activity).toolbarHeightPx()
++            },
+         )
+         compositor = sharedCompositor
+         sharedCompositor.start { inputSurface ->
+@@ -1502,12 +1589,18 @@ private object DualScreenCoordinator {
+                         )
+                         .build(),
+                 )
++                // Prefer live surfaces from SurfaceView callbacks. Cached Surface
++                // objects may be stale after Activity recreate; outputAvailable
++                // will bind fresh ones from surfaceCreated.
+                 topSurface?.let {
+                     sharedCompositor.setOutput(DualScreenSharedCompositor.Slot.TOP, it)
+                 }
+                 bottomSurface?.let {
+                     sharedCompositor.setOutput(DualScreenSharedCompositor.Slot.BOTTOM, it)
+                 }
++                listOfNotNull(topDisplay.get(), controller.get()).forEach { peer ->
++                    peer.registerCurrentSurfaceForCompositor()
++                }
+                 if (documentPath != null) {
+                     loadDocument(activity, activeSession, documentPath, initialUrl)
+                 } else {
+@@ -1564,7 +1657,7 @@ private object DualScreenCoordinator {
+     }
+ 
+     private fun requestReadablePageText(requestId: Int) {
+-        if (currentUrl == DualScreenBrowserActivity.HOME_URL) {
++        if (DualScreenBrowserActivity.isHomeUrl(currentUrl)) {
+             val activity = topDisplay.get() ?: controller.get()
+             val text = runCatching {
+                 activity?.assets?.open("dual_screen_home.html")?.bufferedReader()?.use { reader ->
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+index c14a692..171f083 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+@@ -24,12 +24,21 @@ import java.nio.FloatBuffer
+  */
+ internal class DualScreenSharedCompositor(
+     private val singleScreen: Boolean = false,
++    // Top Activity keeps chrome outside the SurfaceView; crop the shared Gecko
++    // canvas so top shows [0, viewport-chrome) and bottom continues from there.
++    private val topChromeHeightPx: Int = 0,
+ ) {
++    init {
++        require(topChromeHeightPx >= 0)
++        require(topChromeHeightPx < OUTPUT_HEIGHT)
++    }
+     enum class Slot { TOP, BOTTOM }
+ 
+     private data class Output(
+         val surface: Surface,
+         val eglSurface: EGLSurface,
++        var width: Int = OUTPUT_WIDTH,
++        var height: Int = OUTPUT_HEIGHT,
+     )
+ 
+     private val thread = HandlerThread("KBrowserDualCompositor").apply { start() }
+@@ -56,17 +65,23 @@ internal class DualScreenSharedCompositor(
+         floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f),
+     )
+     // SurfaceTexture applies its producer transform after these coordinates.
+-    // Its Android buffer transform flips Y, so 0.5..1 is the visual top half.
+-    private val topCoordinates = floatBuffer(
+-        floatArrayOf(0f, 0.5f, 1f, 0.5f, 0f, 1f, 1f, 1f),
+-    )
++    // Android buffer transform flips Y: canvas y=0 → V≈1, canvas bottom → V≈0.
++    private val topContentHeightPx = OUTPUT_HEIGHT - topChromeHeightPx
++    private val topCoordinates = floatBuffer(uvBand(0, topContentHeightPx))
+     private val bottomCoordinates = floatBuffer(
+-        floatArrayOf(0f, 0f, 1f, 0f, 0f, 0.5f, 1f, 0.5f),
++        uvBand(topContentHeightPx, topContentHeightPx + OUTPUT_HEIGHT),
+     )
+     private val fullCoordinates = floatBuffer(
+         floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f),
+     )
+ 
++    private fun uvBand(startY: Int, endY: Int): FloatArray {
++        val height = canvasHeight.toFloat()
++        val topV = 1f - startY / height
++        val bottomV = 1f - endY / height
++        return floatArrayOf(0f, bottomV, 1f, bottomV, 0f, topV, 1f, topV)
++    }
++
+     fun start(onInputReady: (Surface) -> Unit) {
+         handler.post {
+             if (released) return@post
+@@ -96,9 +111,19 @@ internal class DualScreenSharedCompositor(
+                 )
+                 if (eglSurface != null && eglSurface != EGL14.EGL_NO_SURFACE) {
+                     val output = Output(surface, eglSurface)
++                    querySurfaceSize(output)
+                     if (slot == Slot.TOP) topOutput = output else bottomOutput = output
+-                    Log.i(TAG, "Bound $slot output; cachedFrame=$hasFrame")
++                    Log.i(
++                        TAG,
++                        "Bound $slot output ${output.width}x${output.height}; cachedFrame=$hasFrame",
++                    )
+                     if (hasFrame) drawFrame(updateTexture = false) else clearOutput(output)
++                } else {
++                    Log.e(
++                        TAG,
++                        "eglCreateWindowSurface failed for $slot err=0x" +
++                            Integer.toHexString(EGL14.eglGetError()),
++                    )
+                 }
+             }
+         }
+@@ -236,7 +261,7 @@ internal class DualScreenSharedCompositor(
+ 
+     private fun clearOutput(output: Output) {
+         makeCurrent(output.eglSurface)
+-        GLES20.glViewport(0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT)
++        GLES20.glViewport(0, 0, output.width, output.height)
+         GLES20.glClearColor(1f, 1f, 1f, 1f)
+         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+         EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
+@@ -245,7 +270,7 @@ internal class DualScreenSharedCompositor(
+     private fun drawOutput(output: Output?, coordinates: FloatBuffer) {
+         if (output == null || !output.surface.isValid) return
+         makeCurrent(output.eglSurface)
+-        GLES20.glViewport(0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT)
++        GLES20.glViewport(0, 0, output.width, output.height)
+         GLES20.glClearColor(1f, 1f, 1f, 1f)
+         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+         GLES20.glUseProgram(program)
+@@ -308,6 +333,17 @@ internal class DualScreenSharedCompositor(
+         return shader
+     }
+ 
++    private fun querySurfaceSize(output: Output) {
++        val width = IntArray(1)
++        val height = IntArray(1)
++        if (EGL14.eglQuerySurface(eglDisplay, output.eglSurface, EGL14.EGL_WIDTH, width, 0) &&
++            EGL14.eglQuerySurface(eglDisplay, output.eglSurface, EGL14.EGL_HEIGHT, height, 0)
++        ) {
++            output.width = width[0].coerceAtLeast(1)
++            output.height = height[0].coerceAtLeast(1)
++        }
++    }
++
+     private fun floatBuffer(values: FloatArray): FloatBuffer =
+         ByteBuffer.allocateDirect(values.size * 4)
+             .order(ByteOrder.nativeOrder())
+diff --git a/app/src/main/res/values-zh-rCN/kbrowser_strings.xml b/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
+new file mode 100644
+index 0000000..c02061f
+--- /dev/null
++++ b/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
+@@ -0,0 +1,94 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++<string name="kbrowser_download_folder">KEMIBrowser</string>
++
++    <string name="kbrowser_nav_back">← 后退</string>
++    <string name="kbrowser_nav_back_desc">后退</string>
++    <string name="kbrowser_nav_forward">前进 →</string>
++    <string name="kbrowser_nav_forward_desc">前进</string>
++    <string name="kbrowser_nav_reload">↻ 刷新</string>
++    <string name="kbrowser_nav_reload_desc">刷新</string>
++    <string name="kbrowser_nav_home">⌂ 主页</string>
++    <string name="kbrowser_nav_home_desc">主页</string>
++    <string name="kbrowser_nav_bookmark">☆ 收藏</string>
++    <string name="kbrowser_nav_bookmark_desc">收藏当前页面</string>
++    <string name="kbrowser_nav_bookmarks">☰ 收藏夹</string>
++    <string name="kbrowser_nav_bookmarks_desc">打开收藏夹</string>
++    <string name="kbrowser_nav_downloads">⇩ 下载</string>
++    <string name="kbrowser_nav_downloads_desc">查看下载目录</string>
++    <string name="kbrowser_nav_read_aloud">🔊 朗读</string>
++    <string name="kbrowser_nav_read_aloud_desc">朗读网页</string>
++    <string name="kbrowser_nav_exit">退出</string>
++    <string name="kbrowser_nav_exit_desc">退出 KEMI 浏览器</string>
++    <string name="kbrowser_address_hint">搜索或输入网址（完整显示当前地址）</string>
++    <string name="kbrowser_nav_go">打开</string>
++    <string name="kbrowser_nav_go_desc">打开网址</string>
++
++    <string name="kbrowser_tts_preparing">正在准备朗读…</string>
++    <string name="kbrowser_tts_stop">■ 停止</string>
++    <string name="kbrowser_tts_stop_desc">停止朗读</string>
++    <string name="kbrowser_tts_label">朗读</string>
++    <string name="kbrowser_tts_done">朗读完成</string>
++    <string name="kbrowser_tts_ready">… 准备</string>
++    <string name="kbrowser_tts_pause">⏸ 暂停</string>
++    <string name="kbrowser_tts_resume">▶ 继续</string>
++    <string name="kbrowser_tts_system_failed">系统朗读失败</string>
++    <string name="kbrowser_tts_extracting">正在提取当前页面…</string>
++    <string name="kbrowser_tts_extract_timeout">页面文字提取超时</string>
++    <string name="kbrowser_tts_no_text">当前页面没有检测到可朗读文字</string>
++    <string name="kbrowser_tts_paused">已暂停 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_speaking">正在朗读 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_buffering">正在缓冲 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_engine_unavailable">系统朗读引擎不可用</string>
++    <string name="kbrowser_tts_engine_start_failed">系统朗读启动失败</string>
++
++    <string name="kbrowser_ctx_open_link">打开链接</string>
++    <string name="kbrowser_ctx_copy_link">复制链接</string>
++    <string name="kbrowser_ctx_download_link">下载链接</string>
++    <string name="kbrowser_ctx_copy_link_text">复制链接文字</string>
++    <string name="kbrowser_ctx_open_media">打开图片或媒体</string>
++    <string name="kbrowser_ctx_copy_media">复制图片或媒体地址</string>
++    <string name="kbrowser_ctx_copy_selection">复制所选内容</string>
++    <string name="kbrowser_ctx_paste">粘贴</string>
++    <string name="kbrowser_ctx_home">返回主页</string>
++    <string name="kbrowser_ctx_copy_url">复制当前网址</string>
++    <string name="kbrowser_ctx_back">后退</string>
++    <string name="kbrowser_ctx_forward">前进</string>
++    <string name="kbrowser_ctx_reload">刷新</string>
++    <string name="kbrowser_label_link">链接</string>
++    <string name="kbrowser_label_link_text">链接文字</string>
++    <string name="kbrowser_label_media">媒体地址</string>
++    <string name="kbrowser_label_selection">所选内容</string>
++    <string name="kbrowser_label_url">网址</string>
++    <string name="kbrowser_toast_copied">已复制</string>
++    <string name="kbrowser_toast_pasted">已粘贴</string>
++    <string name="kbrowser_toast_copy_empty">请先选择要复制的内容</string>
++    <string name="kbrowser_toast_no_text_input">当前页面没有可操作的文字输入位置</string>
++
++    <string name="kbrowser_bookmark_unavailable">当前页面不能收藏</string>
++    <string name="kbrowser_bookmark_added">已收藏到书签</string>
++    <string name="kbrowser_bookmark_exists">该页面已在书签中</string>
++    <string name="kbrowser_bookmarks_title">收藏夹</string>
++    <string name="kbrowser_bookmarks_empty_hint">保存常用页面，随时继续阅读</string>
++    <string name="kbrowser_bookmarks_count">已保存 %1$d 个页面</string>
++    <string name="kbrowser_bookmarks_close">关闭</string>
++    <string name="kbrowser_bookmarks_close_desc">关闭收藏夹</string>
++    <string name="kbrowser_bookmarks_empty_title">还没有收藏页面</string>
++    <string name="kbrowser_bookmarks_empty_body">浏览网页时点按“收藏”，常用页面会显示在这里。</string>
++    <string name="kbrowser_bookmarks_open_desc">打开收藏：%1$s</string>
++    <string name="kbrowser_bookmarks_open">打开  ›</string>
++    <string name="kbrowser_bookmarks_delete">删除</string>
++    <string name="kbrowser_bookmarks_delete_desc">删除收藏：%1$s</string>
++    <string name="kbrowser_bookmarks_delete_title">删除收藏？</string>
++    <string name="kbrowser_bookmarks_delete_message">“%1$s”将从收藏夹移除。</string>
++    <string name="kbrowser_bookmarks_cancel">取消</string>
++    <string name="kbrowser_bookmarks_deleted">已删除收藏</string>
++    <string name="kbrowser_bookmarks_delete_failed">删除失败，请重试</string>
++
++    <string name="kbrowser_downloads_empty">当前没有可查看的下载</string>
++    <string name="kbrowser_download_unsupported">此链接不能下载</string>
++    <string name="kbrowser_download_notification_desc">保存到 Download/%1$s</string>
++    <string name="kbrowser_download_path">%1$s/%2$s</string>
++    <string name="kbrowser_download_queued">已加入下载：Download/%1$s/%2$s</string>
++    <string name="kbrowser_download_failed">下载启动失败</string>
++</resources>
+diff --git a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+new file mode 100644
+index 0000000..53c3e8d
+--- /dev/null
++++ b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+@@ -0,0 +1,94 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++<string name="kbrowser_download_folder">KEMIBrowser</string>
++
++    <string name="kbrowser_nav_back">← 上一頁</string>
++    <string name="kbrowser_nav_back_desc">上一頁</string>
++    <string name="kbrowser_nav_forward">下一頁 →</string>
++    <string name="kbrowser_nav_forward_desc">下一頁</string>
++    <string name="kbrowser_nav_reload">↻ 重新整理</string>
++    <string name="kbrowser_nav_reload_desc">重新整理</string>
++    <string name="kbrowser_nav_home">⌂ 首頁</string>
++    <string name="kbrowser_nav_home_desc">首頁</string>
++    <string name="kbrowser_nav_bookmark">☆ 書籤</string>
++    <string name="kbrowser_nav_bookmark_desc">將此頁加入書籤</string>
++    <string name="kbrowser_nav_bookmarks">☰ 書籤</string>
++    <string name="kbrowser_nav_bookmarks_desc">開啟書籤</string>
++    <string name="kbrowser_nav_downloads">⇩ 下載</string>
++    <string name="kbrowser_nav_downloads_desc">檢視下載目錄</string>
++    <string name="kbrowser_nav_read_aloud">🔊 朗讀</string>
++    <string name="kbrowser_nav_read_aloud_desc">朗讀網頁</string>
++    <string name="kbrowser_nav_exit">結束</string>
++    <string name="kbrowser_nav_exit_desc">結束 KEMI 瀏覽器</string>
++    <string name="kbrowser_address_hint">搜尋或輸入網址</string>
++    <string name="kbrowser_nav_go">前往</string>
++    <string name="kbrowser_nav_go_desc">開啟網址</string>
++
++    <string name="kbrowser_tts_preparing">正在準備朗讀…</string>
++    <string name="kbrowser_tts_stop">■ 停止</string>
++    <string name="kbrowser_tts_stop_desc">停止朗讀</string>
++    <string name="kbrowser_tts_label">朗讀</string>
++    <string name="kbrowser_tts_done">朗讀完成</string>
++    <string name="kbrowser_tts_ready">… 準備</string>
++    <string name="kbrowser_tts_pause">⏸ 暫停</string>
++    <string name="kbrowser_tts_resume">▶ 繼續</string>
++    <string name="kbrowser_tts_system_failed">系統朗讀失敗</string>
++    <string name="kbrowser_tts_extracting">正在擷取目前頁面…</string>
++    <string name="kbrowser_tts_extract_timeout">頁面文字擷取逾時</string>
++    <string name="kbrowser_tts_no_text">目前頁面沒有可朗讀的文字</string>
++    <string name="kbrowser_tts_paused">已暫停 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_speaking">正在朗讀 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_buffering">正在緩衝 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_engine_unavailable">系統朗讀引擎無法使用</string>
++    <string name="kbrowser_tts_engine_start_failed">系統朗讀啟動失敗</string>
++
++    <string name="kbrowser_ctx_open_link">開啟連結</string>
++    <string name="kbrowser_ctx_copy_link">複製連結</string>
++    <string name="kbrowser_ctx_download_link">下載連結</string>
++    <string name="kbrowser_ctx_copy_link_text">複製連結文字</string>
++    <string name="kbrowser_ctx_open_media">開啟圖片或媒體</string>
++    <string name="kbrowser_ctx_copy_media">複製圖片或媒體網址</string>
++    <string name="kbrowser_ctx_copy_selection">複製所選內容</string>
++    <string name="kbrowser_ctx_paste">貼上</string>
++    <string name="kbrowser_ctx_home">返回首頁</string>
++    <string name="kbrowser_ctx_copy_url">複製目前網址</string>
++    <string name="kbrowser_ctx_back">上一頁</string>
++    <string name="kbrowser_ctx_forward">下一頁</string>
++    <string name="kbrowser_ctx_reload">重新整理</string>
++    <string name="kbrowser_label_link">連結</string>
++    <string name="kbrowser_label_link_text">連結文字</string>
++    <string name="kbrowser_label_media">媒體網址</string>
++    <string name="kbrowser_label_selection">所選內容</string>
++    <string name="kbrowser_label_url">網址</string>
++    <string name="kbrowser_toast_copied">已複製</string>
++    <string name="kbrowser_toast_pasted">已貼上</string>
++    <string name="kbrowser_toast_copy_empty">請先選取要複製的內容</string>
++    <string name="kbrowser_toast_no_text_input">目前頁面沒有可操作的文字輸入位置</string>
++
++    <string name="kbrowser_bookmark_unavailable">目前頁面無法加入書籤</string>
++    <string name="kbrowser_bookmark_added">已加入書籤</string>
++    <string name="kbrowser_bookmark_exists">此頁已在書籤中</string>
++    <string name="kbrowser_bookmarks_title">書籤</string>
++    <string name="kbrowser_bookmarks_empty_hint">儲存常用頁面，隨時繼續閱讀</string>
++    <string name="kbrowser_bookmarks_count">已儲存 %1$d 個頁面</string>
++    <string name="kbrowser_bookmarks_close">關閉</string>
++    <string name="kbrowser_bookmarks_close_desc">關閉書籤</string>
++    <string name="kbrowser_bookmarks_empty_title">尚無書籤</string>
++    <string name="kbrowser_bookmarks_empty_body">瀏覽網頁時點選「書籤」，常用頁面會顯示在這裡。</string>
++    <string name="kbrowser_bookmarks_open_desc">開啟書籤：%1$s</string>
++    <string name="kbrowser_bookmarks_open">開啟  ›</string>
++    <string name="kbrowser_bookmarks_delete">刪除</string>
++    <string name="kbrowser_bookmarks_delete_desc">刪除書籤：%1$s</string>
++    <string name="kbrowser_bookmarks_delete_title">刪除書籤？</string>
++    <string name="kbrowser_bookmarks_delete_message">「%1$s」將從書籤移除。</string>
++    <string name="kbrowser_bookmarks_cancel">取消</string>
++    <string name="kbrowser_bookmarks_deleted">已刪除書籤</string>
++    <string name="kbrowser_bookmarks_delete_failed">刪除失敗，請再試一次</string>
++
++    <string name="kbrowser_downloads_empty">目前沒有可檢視的下載</string>
++    <string name="kbrowser_download_unsupported">此連結無法下載</string>
++    <string name="kbrowser_download_notification_desc">儲存到 Download/%1$s</string>
++    <string name="kbrowser_download_path">%1$s/%2$s</string>
++    <string name="kbrowser_download_queued">已加入下載：Download/%1$s/%2$s</string>
++    <string name="kbrowser_download_failed">下載啟動失敗</string>
++</resources>
+diff --git a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+new file mode 100644
+index 0000000..53c3e8d
+--- /dev/null
++++ b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+@@ -0,0 +1,94 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++<string name="kbrowser_download_folder">KEMIBrowser</string>
++
++    <string name="kbrowser_nav_back">← 上一頁</string>
++    <string name="kbrowser_nav_back_desc">上一頁</string>
++    <string name="kbrowser_nav_forward">下一頁 →</string>
++    <string name="kbrowser_nav_forward_desc">下一頁</string>
++    <string name="kbrowser_nav_reload">↻ 重新整理</string>
++    <string name="kbrowser_nav_reload_desc">重新整理</string>
++    <string name="kbrowser_nav_home">⌂ 首頁</string>
++    <string name="kbrowser_nav_home_desc">首頁</string>
++    <string name="kbrowser_nav_bookmark">☆ 書籤</string>
++    <string name="kbrowser_nav_bookmark_desc">將此頁加入書籤</string>
++    <string name="kbrowser_nav_bookmarks">☰ 書籤</string>
++    <string name="kbrowser_nav_bookmarks_desc">開啟書籤</string>
++    <string name="kbrowser_nav_downloads">⇩ 下載</string>
++    <string name="kbrowser_nav_downloads_desc">檢視下載目錄</string>
++    <string name="kbrowser_nav_read_aloud">🔊 朗讀</string>
++    <string name="kbrowser_nav_read_aloud_desc">朗讀網頁</string>
++    <string name="kbrowser_nav_exit">結束</string>
++    <string name="kbrowser_nav_exit_desc">結束 KEMI 瀏覽器</string>
++    <string name="kbrowser_address_hint">搜尋或輸入網址</string>
++    <string name="kbrowser_nav_go">前往</string>
++    <string name="kbrowser_nav_go_desc">開啟網址</string>
++
++    <string name="kbrowser_tts_preparing">正在準備朗讀…</string>
++    <string name="kbrowser_tts_stop">■ 停止</string>
++    <string name="kbrowser_tts_stop_desc">停止朗讀</string>
++    <string name="kbrowser_tts_label">朗讀</string>
++    <string name="kbrowser_tts_done">朗讀完成</string>
++    <string name="kbrowser_tts_ready">… 準備</string>
++    <string name="kbrowser_tts_pause">⏸ 暫停</string>
++    <string name="kbrowser_tts_resume">▶ 繼續</string>
++    <string name="kbrowser_tts_system_failed">系統朗讀失敗</string>
++    <string name="kbrowser_tts_extracting">正在擷取目前頁面…</string>
++    <string name="kbrowser_tts_extract_timeout">頁面文字擷取逾時</string>
++    <string name="kbrowser_tts_no_text">目前頁面沒有可朗讀的文字</string>
++    <string name="kbrowser_tts_paused">已暫停 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_speaking">正在朗讀 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_buffering">正在緩衝 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_engine_unavailable">系統朗讀引擎無法使用</string>
++    <string name="kbrowser_tts_engine_start_failed">系統朗讀啟動失敗</string>
++
++    <string name="kbrowser_ctx_open_link">開啟連結</string>
++    <string name="kbrowser_ctx_copy_link">複製連結</string>
++    <string name="kbrowser_ctx_download_link">下載連結</string>
++    <string name="kbrowser_ctx_copy_link_text">複製連結文字</string>
++    <string name="kbrowser_ctx_open_media">開啟圖片或媒體</string>
++    <string name="kbrowser_ctx_copy_media">複製圖片或媒體網址</string>
++    <string name="kbrowser_ctx_copy_selection">複製所選內容</string>
++    <string name="kbrowser_ctx_paste">貼上</string>
++    <string name="kbrowser_ctx_home">返回首頁</string>
++    <string name="kbrowser_ctx_copy_url">複製目前網址</string>
++    <string name="kbrowser_ctx_back">上一頁</string>
++    <string name="kbrowser_ctx_forward">下一頁</string>
++    <string name="kbrowser_ctx_reload">重新整理</string>
++    <string name="kbrowser_label_link">連結</string>
++    <string name="kbrowser_label_link_text">連結文字</string>
++    <string name="kbrowser_label_media">媒體網址</string>
++    <string name="kbrowser_label_selection">所選內容</string>
++    <string name="kbrowser_label_url">網址</string>
++    <string name="kbrowser_toast_copied">已複製</string>
++    <string name="kbrowser_toast_pasted">已貼上</string>
++    <string name="kbrowser_toast_copy_empty">請先選取要複製的內容</string>
++    <string name="kbrowser_toast_no_text_input">目前頁面沒有可操作的文字輸入位置</string>
++
++    <string name="kbrowser_bookmark_unavailable">目前頁面無法加入書籤</string>
++    <string name="kbrowser_bookmark_added">已加入書籤</string>
++    <string name="kbrowser_bookmark_exists">此頁已在書籤中</string>
++    <string name="kbrowser_bookmarks_title">書籤</string>
++    <string name="kbrowser_bookmarks_empty_hint">儲存常用頁面，隨時繼續閱讀</string>
++    <string name="kbrowser_bookmarks_count">已儲存 %1$d 個頁面</string>
++    <string name="kbrowser_bookmarks_close">關閉</string>
++    <string name="kbrowser_bookmarks_close_desc">關閉書籤</string>
++    <string name="kbrowser_bookmarks_empty_title">尚無書籤</string>
++    <string name="kbrowser_bookmarks_empty_body">瀏覽網頁時點選「書籤」，常用頁面會顯示在這裡。</string>
++    <string name="kbrowser_bookmarks_open_desc">開啟書籤：%1$s</string>
++    <string name="kbrowser_bookmarks_open">開啟  ›</string>
++    <string name="kbrowser_bookmarks_delete">刪除</string>
++    <string name="kbrowser_bookmarks_delete_desc">刪除書籤：%1$s</string>
++    <string name="kbrowser_bookmarks_delete_title">刪除書籤？</string>
++    <string name="kbrowser_bookmarks_delete_message">「%1$s」將從書籤移除。</string>
++    <string name="kbrowser_bookmarks_cancel">取消</string>
++    <string name="kbrowser_bookmarks_deleted">已刪除書籤</string>
++    <string name="kbrowser_bookmarks_delete_failed">刪除失敗，請再試一次</string>
++
++    <string name="kbrowser_downloads_empty">目前沒有可檢視的下載</string>
++    <string name="kbrowser_download_unsupported">此連結無法下載</string>
++    <string name="kbrowser_download_notification_desc">儲存到 Download/%1$s</string>
++    <string name="kbrowser_download_path">%1$s/%2$s</string>
++    <string name="kbrowser_download_queued">已加入下載：Download/%1$s/%2$s</string>
++    <string name="kbrowser_download_failed">下載啟動失敗</string>
++</resources>
+diff --git a/app/src/main/res/values-zh/kbrowser_strings.xml b/app/src/main/res/values-zh/kbrowser_strings.xml
+new file mode 100644
+index 0000000..c02061f
+--- /dev/null
++++ b/app/src/main/res/values-zh/kbrowser_strings.xml
+@@ -0,0 +1,94 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++<string name="kbrowser_download_folder">KEMIBrowser</string>
++
++    <string name="kbrowser_nav_back">← 后退</string>
++    <string name="kbrowser_nav_back_desc">后退</string>
++    <string name="kbrowser_nav_forward">前进 →</string>
++    <string name="kbrowser_nav_forward_desc">前进</string>
++    <string name="kbrowser_nav_reload">↻ 刷新</string>
++    <string name="kbrowser_nav_reload_desc">刷新</string>
++    <string name="kbrowser_nav_home">⌂ 主页</string>
++    <string name="kbrowser_nav_home_desc">主页</string>
++    <string name="kbrowser_nav_bookmark">☆ 收藏</string>
++    <string name="kbrowser_nav_bookmark_desc">收藏当前页面</string>
++    <string name="kbrowser_nav_bookmarks">☰ 收藏夹</string>
++    <string name="kbrowser_nav_bookmarks_desc">打开收藏夹</string>
++    <string name="kbrowser_nav_downloads">⇩ 下载</string>
++    <string name="kbrowser_nav_downloads_desc">查看下载目录</string>
++    <string name="kbrowser_nav_read_aloud">🔊 朗读</string>
++    <string name="kbrowser_nav_read_aloud_desc">朗读网页</string>
++    <string name="kbrowser_nav_exit">退出</string>
++    <string name="kbrowser_nav_exit_desc">退出 KEMI 浏览器</string>
++    <string name="kbrowser_address_hint">搜索或输入网址（完整显示当前地址）</string>
++    <string name="kbrowser_nav_go">打开</string>
++    <string name="kbrowser_nav_go_desc">打开网址</string>
++
++    <string name="kbrowser_tts_preparing">正在准备朗读…</string>
++    <string name="kbrowser_tts_stop">■ 停止</string>
++    <string name="kbrowser_tts_stop_desc">停止朗读</string>
++    <string name="kbrowser_tts_label">朗读</string>
++    <string name="kbrowser_tts_done">朗读完成</string>
++    <string name="kbrowser_tts_ready">… 准备</string>
++    <string name="kbrowser_tts_pause">⏸ 暂停</string>
++    <string name="kbrowser_tts_resume">▶ 继续</string>
++    <string name="kbrowser_tts_system_failed">系统朗读失败</string>
++    <string name="kbrowser_tts_extracting">正在提取当前页面…</string>
++    <string name="kbrowser_tts_extract_timeout">页面文字提取超时</string>
++    <string name="kbrowser_tts_no_text">当前页面没有检测到可朗读文字</string>
++    <string name="kbrowser_tts_paused">已暂停 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_speaking">正在朗读 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_buffering">正在缓冲 · 第 %1$d/%2$d 段</string>
++    <string name="kbrowser_tts_engine_unavailable">系统朗读引擎不可用</string>
++    <string name="kbrowser_tts_engine_start_failed">系统朗读启动失败</string>
++
++    <string name="kbrowser_ctx_open_link">打开链接</string>
++    <string name="kbrowser_ctx_copy_link">复制链接</string>
++    <string name="kbrowser_ctx_download_link">下载链接</string>
++    <string name="kbrowser_ctx_copy_link_text">复制链接文字</string>
++    <string name="kbrowser_ctx_open_media">打开图片或媒体</string>
++    <string name="kbrowser_ctx_copy_media">复制图片或媒体地址</string>
++    <string name="kbrowser_ctx_copy_selection">复制所选内容</string>
++    <string name="kbrowser_ctx_paste">粘贴</string>
++    <string name="kbrowser_ctx_home">返回主页</string>
++    <string name="kbrowser_ctx_copy_url">复制当前网址</string>
++    <string name="kbrowser_ctx_back">后退</string>
++    <string name="kbrowser_ctx_forward">前进</string>
++    <string name="kbrowser_ctx_reload">刷新</string>
++    <string name="kbrowser_label_link">链接</string>
++    <string name="kbrowser_label_link_text">链接文字</string>
++    <string name="kbrowser_label_media">媒体地址</string>
++    <string name="kbrowser_label_selection">所选内容</string>
++    <string name="kbrowser_label_url">网址</string>
++    <string name="kbrowser_toast_copied">已复制</string>
++    <string name="kbrowser_toast_pasted">已粘贴</string>
++    <string name="kbrowser_toast_copy_empty">请先选择要复制的内容</string>
++    <string name="kbrowser_toast_no_text_input">当前页面没有可操作的文字输入位置</string>
++
++    <string name="kbrowser_bookmark_unavailable">当前页面不能收藏</string>
++    <string name="kbrowser_bookmark_added">已收藏到书签</string>
++    <string name="kbrowser_bookmark_exists">该页面已在书签中</string>
++    <string name="kbrowser_bookmarks_title">收藏夹</string>
++    <string name="kbrowser_bookmarks_empty_hint">保存常用页面，随时继续阅读</string>
++    <string name="kbrowser_bookmarks_count">已保存 %1$d 个页面</string>
++    <string name="kbrowser_bookmarks_close">关闭</string>
++    <string name="kbrowser_bookmarks_close_desc">关闭收藏夹</string>
++    <string name="kbrowser_bookmarks_empty_title">还没有收藏页面</string>
++    <string name="kbrowser_bookmarks_empty_body">浏览网页时点按“收藏”，常用页面会显示在这里。</string>
++    <string name="kbrowser_bookmarks_open_desc">打开收藏：%1$s</string>
++    <string name="kbrowser_bookmarks_open">打开  ›</string>
++    <string name="kbrowser_bookmarks_delete">删除</string>
++    <string name="kbrowser_bookmarks_delete_desc">删除收藏：%1$s</string>
++    <string name="kbrowser_bookmarks_delete_title">删除收藏？</string>
++    <string name="kbrowser_bookmarks_delete_message">“%1$s”将从收藏夹移除。</string>
++    <string name="kbrowser_bookmarks_cancel">取消</string>
++    <string name="kbrowser_bookmarks_deleted">已删除收藏</string>
++    <string name="kbrowser_bookmarks_delete_failed">删除失败，请重试</string>
++
++    <string name="kbrowser_downloads_empty">当前没有可查看的下载</string>
++    <string name="kbrowser_download_unsupported">此链接不能下载</string>
++    <string name="kbrowser_download_notification_desc">保存到 Download/%1$s</string>
++    <string name="kbrowser_download_path">%1$s/%2$s</string>
++    <string name="kbrowser_download_queued">已加入下载：Download/%1$s/%2$s</string>
++    <string name="kbrowser_download_failed">下载启动失败</string>
++</resources>
+diff --git a/app/src/main/res/values/kbrowser_strings.xml b/app/src/main/res/values/kbrowser_strings.xml
+new file mode 100644
+index 0000000..91d089a
+--- /dev/null
++++ b/app/src/main/res/values/kbrowser_strings.xml
+@@ -0,0 +1,101 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Default (English). App follows system locale; unsupported locales fall back here. -->
++<resources>
++    <!-- Launcher / branding -->
++<string name="kbrowser_download_folder">KEMIBrowser</string>
++
++    <!-- Toolbar -->
++    <string name="kbrowser_nav_back">← Back</string>
++    <string name="kbrowser_nav_back_desc">Back</string>
++    <string name="kbrowser_nav_forward">Forward →</string>
++    <string name="kbrowser_nav_forward_desc">Forward</string>
++    <string name="kbrowser_nav_reload">↻ Reload</string>
++    <string name="kbrowser_nav_reload_desc">Reload</string>
++    <string name="kbrowser_nav_home">⌂ Home</string>
++    <string name="kbrowser_nav_home_desc">Home</string>
++    <string name="kbrowser_nav_bookmark">☆ Bookmark</string>
++    <string name="kbrowser_nav_bookmark_desc">Bookmark this page</string>
++    <string name="kbrowser_nav_bookmarks">☰ Bookmarks</string>
++    <string name="kbrowser_nav_bookmarks_desc">Open bookmarks</string>
++    <string name="kbrowser_nav_downloads">⇩ Downloads</string>
++    <string name="kbrowser_nav_downloads_desc">Open downloads folder</string>
++    <string name="kbrowser_nav_read_aloud">🔊 Read aloud</string>
++    <string name="kbrowser_nav_read_aloud_desc">Read page aloud</string>
++    <string name="kbrowser_nav_exit">Exit</string>
++    <string name="kbrowser_nav_exit_desc">Exit KEMI Browser</string>
++    <string name="kbrowser_address_hint">Search or enter address</string>
++    <string name="kbrowser_nav_go">Go</string>
++    <string name="kbrowser_nav_go_desc">Open address</string>
++
++    <!-- Read aloud overlay -->
++    <string name="kbrowser_tts_preparing">Preparing to read…</string>
++    <string name="kbrowser_tts_stop">■ Stop</string>
++    <string name="kbrowser_tts_stop_desc">Stop reading</string>
++    <string name="kbrowser_tts_label">Read aloud</string>
++    <string name="kbrowser_tts_done">Finished reading</string>
++    <string name="kbrowser_tts_ready">… Ready</string>
++    <string name="kbrowser_tts_pause">⏸ Pause</string>
++    <string name="kbrowser_tts_resume">▶ Resume</string>
++    <string name="kbrowser_tts_system_failed">System read-aloud failed</string>
++    <string name="kbrowser_tts_extracting">Extracting page text…</string>
++    <string name="kbrowser_tts_extract_timeout">Timed out extracting page text</string>
++    <string name="kbrowser_tts_no_text">No readable text found on this page</string>
++    <string name="kbrowser_tts_paused">Paused · part %1$d/%2$d</string>
++    <string name="kbrowser_tts_speaking">Reading · part %1$d/%2$d</string>
++    <string name="kbrowser_tts_buffering">Buffering · part %1$d/%2$d</string>
++    <string name="kbrowser_tts_engine_unavailable">System speech engine unavailable</string>
++    <string name="kbrowser_tts_engine_start_failed">Failed to start system speech</string>
++
++    <!-- Context menu -->
++    <string name="kbrowser_ctx_open_link">Open link</string>
++    <string name="kbrowser_ctx_copy_link">Copy link</string>
++    <string name="kbrowser_ctx_download_link">Download link</string>
++    <string name="kbrowser_ctx_copy_link_text">Copy link text</string>
++    <string name="kbrowser_ctx_open_media">Open image or media</string>
++    <string name="kbrowser_ctx_copy_media">Copy image or media URL</string>
++    <string name="kbrowser_ctx_copy_selection">Copy selection</string>
++    <string name="kbrowser_ctx_paste">Paste</string>
++    <string name="kbrowser_ctx_home">Go home</string>
++    <string name="kbrowser_ctx_copy_url">Copy current URL</string>
++    <string name="kbrowser_ctx_back">Back</string>
++    <string name="kbrowser_ctx_forward">Forward</string>
++    <string name="kbrowser_ctx_reload">Reload</string>
++    <string name="kbrowser_label_link">Link</string>
++    <string name="kbrowser_label_link_text">Link text</string>
++    <string name="kbrowser_label_media">Media URL</string>
++    <string name="kbrowser_label_selection">Selection</string>
++    <string name="kbrowser_label_url">URL</string>
++    <string name="kbrowser_toast_copied">Copied</string>
++    <string name="kbrowser_toast_pasted">Pasted</string>
++    <string name="kbrowser_toast_copy_empty">Select text to copy first</string>
++    <string name="kbrowser_toast_no_text_input">No editable text field on this page</string>
++
++    <!-- Bookmarks -->
++    <string name="kbrowser_bookmark_unavailable">This page cannot be bookmarked</string>
++    <string name="kbrowser_bookmark_added">Saved to bookmarks</string>
++    <string name="kbrowser_bookmark_exists">Already in bookmarks</string>
++    <string name="kbrowser_bookmarks_title">Bookmarks</string>
++    <string name="kbrowser_bookmarks_empty_hint">Save pages you use often</string>
++    <string name="kbrowser_bookmarks_count">%1$d saved pages</string>
++    <string name="kbrowser_bookmarks_close">Close</string>
++    <string name="kbrowser_bookmarks_close_desc">Close bookmarks</string>
++    <string name="kbrowser_bookmarks_empty_title">No bookmarks yet</string>
++    <string name="kbrowser_bookmarks_empty_body">Tap Bookmark while browsing to save pages here.</string>
++    <string name="kbrowser_bookmarks_open_desc">Open bookmark: %1$s</string>
++    <string name="kbrowser_bookmarks_open">Open  ›</string>
++    <string name="kbrowser_bookmarks_delete">Delete</string>
++    <string name="kbrowser_bookmarks_delete_desc">Delete bookmark: %1$s</string>
++    <string name="kbrowser_bookmarks_delete_title">Delete bookmark?</string>
++    <string name="kbrowser_bookmarks_delete_message">“%1$s” will be removed from bookmarks.</string>
++    <string name="kbrowser_bookmarks_cancel">Cancel</string>
++    <string name="kbrowser_bookmarks_deleted">Bookmark deleted</string>
++    <string name="kbrowser_bookmarks_delete_failed">Could not delete. Try again.</string>
++
++    <!-- Downloads -->
++    <string name="kbrowser_downloads_empty">No downloads to show</string>
++    <string name="kbrowser_download_unsupported">This link cannot be downloaded</string>
++    <string name="kbrowser_download_notification_desc">Saving to Download/%1$s</string>
++    <string name="kbrowser_download_path">%1$s/%2$s</string>
++    <string name="kbrowser_download_queued">Queued: Download/%1$s/%2$s</string>
++    <string name="kbrowser_download_failed">Could not start download</string>
++</resources>
