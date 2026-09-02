@@ -1,0 +1,224 @@
+diff --git a/app/build.gradle b/app/build.gradle
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -335,16 +335,20 @@
+             // The Google Play Store does not allow multiple APKs for the same app that all have the
+             // same version code. Therefore we need to have different version codes for our ARM and x86
+             // builds.
+-            def versionName = buildType == 'nightly' ?
++            def versionName = buildType == 'forkRelease' ?
++                    "1.0.1" :
++                    (buildType == 'nightly' ?
+                     "${Config.nightlyVersionName(project)}" :
+-                    "${Config.releaseVersionName(project)}"
++                    "${Config.releaseVersionName(project)}")
+             project.logger.debug("versionName override: $versionName")
+ 
+             variant.outputs.each { output ->
+                 // We use the same version code generator, that we inherited from Fennec, across all channels - even on
+                 // channels that never shipped a Fennec build.
+                 def abi = output.filters.find { it.filterType == FilterConfiguration.FilterType.ABI }?.identifier ?: "universal"
+-                def versionCodeOverride = Config.generateFennecVersionCode(abi)
++                def versionCodeOverride = buildType == 'forkRelease' ?
++                        101 :
++                        Config.generateFennecVersionCode(abi)
+                 project.logger.debug("versionCode for $abi = $versionCodeOverride")
+                 output.versionName.set(versionName)
+                 output.versionCode.set(versionCodeOverride)
+diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dual_screen_home.html
+--- a/app/src/main/assets/dual_screen_home.html
++++ b/app/src/main/assets/dual_screen_home.html
+@@ -3,17 +3,20 @@
+ <head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width,initial-scale=1">
+-  <title>双屏浏览器</title>
++  <title>KEMI 浏览器</title>
+   <style>
+     * { box-sizing: border-box; }
+-    body { margin: 0; padding: 86px 6vw 120px; color: #172033; background: #f5f7fa; font: 28px/1.5 system-ui, sans-serif; }
+-    header { display: flex; align-items: end; justify-content: space-between; gap: 40px; margin-bottom: 34px; }
++    html, body { margin: 0; max-width: 100%; overflow-x: hidden; }
++    body { padding: 86px 6vw 120px; color: #172033; background: #f5f7fa; font: 28px/1.5 system-ui, sans-serif; }
++    header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 34px; width: 100%; max-width: 100%; min-width: 0; }
++    .brand { flex: 0 1 auto; min-width: max-content; }
+     h1 { margin: 0; font-size: 60px; line-height: 1.1; color: #1456c0; white-space: nowrap; }
+     .sub { color: #596579; margin: 8px 0 0; }
+-    form { display: flex; width: 620px; height: 66px; }
+-    input { flex: 1; min-width: 0; padding: 0 22px; border: 1px solid #cbd5e3; border-radius: 12px 0 0 12px; background: #fff; color: #172033; font: inherit; outline: none; }
+-    button { width: 108px; border: 0; border-radius: 0 12px 12px 0; background: #1456c0; color: #fff; font: inherit; }
+-    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
++    /* form shrinks / wraps so title stays fully visible; button stays on-screen */
++    form { display: flex; flex: 1 1 280px; width: auto; max-width: 560px; min-width: 0; height: 66px; margin-left: auto; }
++    input { flex: 1 1 0; min-width: 0; padding: 0 22px; border: 1px solid #cbd5e3; border-radius: 12px 0 0 12px; background: #fff; color: #172033; font: inherit; outline: none; }
++    button { flex: 0 0 148px; width: 148px; min-width: 148px; max-width: 148px; padding: 0; border: 0; border-radius: 0 12px 12px 0; background: #1456c0; color: #fff; font: inherit; white-space: nowrap; }
++    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; width: 100%; }
+     a { display: block; min-width: 0; min-height: 112px; padding: 24px 16px; overflow: hidden; border: 1px solid #d9e2f0; border-radius: 14px; background: #fff; color: #164ea3; text-decoration: none; font-size: 22px; white-space: nowrap; text-overflow: ellipsis; }
+     a span { display: block; color: #7a8495; font-size: 21px; }
+     a:focus, a:active, button:focus { outline: 4px solid #8ab4f8; outline-offset: 2px; }
+@@ -23,29 +26,144 @@
+ </head>
+ <body>
+   <header>
+-    <div><h1>双屏浏览器</h1><p class="sub">知识、文档与学习站点</p></div>
+-    <form action="https://www.baidu.com/s" method="get">
+-      <input name="wd" aria-label="搜索内容" placeholder="搜索知识或输入问题" autocomplete="off">
+-      <button type="submit">搜索</button>
++    <div class="brand"><h1 id="title">KEMI 浏览器</h1><p class="sub" id="subtitle">知识、文档与学习站点</p></div>
++    <form id="searchForm" action="https://www.baidu.com/s" method="get">
++      <input id="searchInput" name="wd" aria-label="搜索内容" placeholder="搜索知识或输入问题" autocomplete="off">
++      <button id="searchBtn" type="submit">搜索</button>
+     </form>
+   </header>
+-  <div class="grid">
+-    <a href="https://www.baidu.com/">百度<span>知识搜索</span></a>
+-    <a href="https://baike.baidu.com/">百度百科<span>中文百科</span></a>
+-    <a href="https://www.zhihu.com/">知乎<span>问答社区</span></a>
+-    <a href="https://www.tianya.net/">天涯社区<span>中文社区精选</span></a>
+-    <a href="https://developer.mozilla.org/zh-CN/">MDN<span>Web 开发文档</span></a>
+-    <a href="https://www.w3.org/">W3C<span>Web 标准</span></a>
+-    <a href="https://www.cnki.net/">中国知网<span>学术检索</span></a>
+-    <a href="https://www.nlc.cn/">国家图书馆<span>文献资源</span></a>
+-    <a href="https://www.icourse163.org/">中国大学MOOC<span>在线课程</span></a>
+-    <a href="https://www.guokr.com/">果壳<span>科学知识</span></a>
+-    <a href="https://www.oschina.net/">开源中国<span>技术社区</span></a>
+-    <a href="https://kemi.newlinksz.com/kd/">KEMI 知识库<span>内部知识与文档</span></a>
+-    <a href="https://kemi-chat.newlinksz.com:21121/km100">KEMI Top 100<span>开源项目星图</span></a>
+-    <a href="https://kemi-chat.newlinksz.com:21121/top300">GitHub Top 300<span>热门开源项目</span></a>
+-  </div>
+-  <div class="guide">KEMI 双屏浏览器：一页跨双屏，内容自然衔接，双屏都能流畅操作。</div>
++  <div class="grid" id="sites"></div>
++  <div class="guide" id="guide">KEMI 浏览器：一页跨双屏，内容自然衔接，双屏都能流畅操作。</div>
+   <div class="spacer" aria-hidden="true"></div>
++  <script>
++(function () {
++  // Same layout, URLs, and card set for every locale — only labels are translated.
++  var sites = [
++    ["https://www.baidu.com/", "baidu"],
++    ["https://baike.baidu.com/", "baike"],
++    ["https://www.zhihu.com/", "zhihu"],
++    ["https://www.tianya.net/index.html", "tianya"],
++    ["https://developer.mozilla.org/zh-CN/", "mdn"],
++    ["https://www.w3.org/", "w3c"],
++    ["https://www.cnki.net/", "cnki"],
++    ["https://www.nlc.cn/", "nlc"],
++    ["https://www.icourse163.org/", "mooc"],
++    ["https://www.guokr.com/", "guokr"],
++    ["https://www.oschina.net/", "oschina"],
++    ["https://kemi.newlinksz.com/kd/", "knowledge"],
++    ["https://kemi-chat.newlinksz.com:21121/km100", "top100"],
++    ["https://kemi-chat.newlinksz.com:21121/top300", "top300"]
++  ];
++
++  var copy = {
++    en: {
++      title: "KEMI Browser",
++      subtitle: "Knowledge, documents, and learning sites",
++      searchPh: "Search or ask a question",
++      searchAria: "Search",
++      searchBtn: "Search",
++      guide: "KEMI Browser: one page across two screens, continuous content, smooth on both displays.",
++      cards: {
++        baidu: ["Baidu", "Knowledge search"],
++        baike: ["Baidu Baike", "Encyclopedia"],
++        zhihu: ["Zhihu", "Q&A community"],
++        tianya: ["Tianya", "Community picks"],
++        mdn: ["MDN", "Web docs"],
++        w3c: ["W3C", "Web standards"],
++        cnki: ["CNKI", "Academic search"],
++        nlc: ["National Library", "Documents"],
++        mooc: ["China MOOC", "Online courses"],
++        guokr: ["Guokr", "Science"],
++        oschina: ["OSChina", "Tech community"],
++        knowledge: ["KEMI Knowledge", "Internal docs"],
++        top100: ["KEMI Top 100", "Project map"],
++        top300: ["GitHub Top 300", "Popular projects"]
++      }
++    },
++    cn: {
++      title: "KEMI 浏览器",
++      subtitle: "知识、文档与学习站点",
++      searchPh: "搜索知识或输入问题",
++      searchAria: "搜索内容",
++      searchBtn: "搜索",
++      guide: "KEMI 浏览器：一页跨双屏，内容自然衔接，双屏都能流畅操作。",
++      cards: {
++        baidu: ["百度", "知识搜索"],
++        baike: ["百度百科", "中文百科"],
++        zhihu: ["知乎", "问答社区"],
++        tianya: ["天涯社区", "中文社区精选"],
++        mdn: ["MDN", "Web 开发文档"],
++        w3c: ["W3C", "Web 标准"],
++        cnki: ["中国知网", "学术检索"],
++        nlc: ["国家图书馆", "文献资源"],
++        mooc: ["中国大学MOOC", "在线课程"],
++        guokr: ["果壳", "科学知识"],
++        oschina: ["开源中国", "技术社区"],
++        knowledge: ["KEMI 知识库", "内部知识与文档"],
++        top100: ["KEMI Top 100", "开源项目星图"],
++        top300: ["GitHub Top 300", "热门开源项目"]
++      }
++    },
++    tw: {
++      title: "KEMI 瀏覽器",
++      subtitle: "知識、文件與學習網站",
++      searchPh: "搜尋知識或輸入問題",
++      searchAria: "搜尋內容",
++      searchBtn: "搜尋",
++      guide: "KEMI 瀏覽器：一頁跨雙螢幕，內容自然銜接，雙螢幕都能流暢操作。",
++      cards: {
++        baidu: ["百度", "知識搜尋"],
++        baike: ["百度百科", "中文百科"],
++        zhihu: ["知乎", "問答社群"],
++        tianya: ["天涯社區", "中文社區精選"],
++        mdn: ["MDN", "Web 開發文件"],
++        w3c: ["W3C", "Web 標準"],
++        cnki: ["中國知網", "學術檢索"],
++        nlc: ["國家圖書館", "文獻資源"],
++        mooc: ["中國大學MOOC", "線上課程"],
++        guokr: ["果殼", "科學知識"],
++        oschina: ["開源中國", "技術社群"],
++        knowledge: ["KEMI 知識庫", "內部知識與文件"],
++        top100: ["KEMI Top 100", "開源專案星圖"],
++        top300: ["GitHub Top 300", "熱門開源專案"]
++      }
++    }
++  };
++
++  var forced = null;
++  try {
++    forced = new URLSearchParams(location.search).get("lang");
++  } catch (e) {}
++  var lang = (navigator.language || "en").toLowerCase();
++  var isTw = lang.indexOf("zh-tw") === 0 || lang.indexOf("zh-hk") === 0 || lang.indexOf("zh-hant") === 0 || lang.indexOf("zh-hans") === -1 && lang.indexOf("hant") >= 0;
++  var isZh = lang.indexOf("zh") === 0;
++  var L = (forced === "tw" || forced === "cn" || forced === "en")
++    ? forced
++    : (isTw ? "tw" : (isZh ? "cn" : "en"));
++  var t = copy[L];
++
++  document.documentElement.lang = L === "tw" ? "zh-Hant" : (L === "cn" ? "zh-CN" : "en");
++  document.title = t.title;
++  document.getElementById("title").textContent = t.title;
++  document.getElementById("subtitle").textContent = t.subtitle;
++  document.getElementById("guide").textContent = t.guide;
++  document.getElementById("searchBtn").textContent = t.searchBtn;
++  var input = document.getElementById("searchInput");
++  input.placeholder = t.searchPh;
++  input.setAttribute("aria-label", t.searchAria);
++
++  var grid = document.getElementById("sites");
++  sites.forEach(function (item) {
++    var labels = t.cards[item[1]];
++    var a = document.createElement("a");
++    a.href = item[0];
++    a.textContent = labels[0];
++    var span = document.createElement("span");
++    span.textContent = labels[1];
++    a.appendChild(span);
++    grid.appendChild(a);
++  });
++})();
++  </script>
+ </body>
+ </html>
