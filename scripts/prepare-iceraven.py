@@ -15,7 +15,7 @@ def replace(path: Path, old: str, new: str) -> None:
     text = path.read_text(encoding="utf-8")
     if old not in text:
         raise RuntimeError(f"expected source text not found in {path}: {old!r}")
-    path.write_text(text.replace(old, new), encoding="utf-8")
+    path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
 
 
 def run(*args: str, cwd: Path) -> None:
@@ -54,13 +54,13 @@ def main() -> int:
             "../../../../../gradle/libs.versions.toml",
             "../../../gradle/libs.versions.toml",
         )
-        path.write_text(text, encoding="utf-8")
+        path.write_text(text, encoding="utf-8", newline="\n")
     for path in components.rglob("*.kts"):
         text = path.read_text(encoding="utf-8").replace(
             "../../../../../gradle/libs.versions.toml",
             "../../../gradle/libs.versions.toml",
         )
-        path.write_text(text, encoding="utf-8")
+        path.write_text(text, encoding="utf-8", newline="\n")
 
     replace(
         root / "gradle/libs.versions.toml",

@@ -1,0 +1,35 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index beb054e..74d6374 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -1099,12 +1099,6 @@ open class DualScreenBrowserActivity : Activity() {
+         val items = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+         root.addView(ScrollView(this).apply { addView(items) },
+             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(430)))
+-        root.addView(TextView(this).apply {
+-            text = getString(R.string.kbrowser_downloads_location, getString(R.string.kbrowser_download_folder))
+-            textSize = 13f
+-            setTextColor(Color.rgb(101, 119, 145))
+-            setPadding(0, dp(10), 0, 0)
+-        })
+         val dialog = AlertDialog.Builder(this).setView(root).create()
+         close.setOnClickListener { dialog.dismiss() }
+         val updateHandler = Handler(Looper.getMainLooper())
+@@ -1348,9 +1342,17 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+             setDataAndType(uri, mime)
++            clipData = ClipData.newUri(contentResolver, item.title, uri)
+             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+         }
+         DualScreenCoordinator.expectExternalViewer()
++        val openedWithWps = extension == "pdf" && runCatching {
++            startActivity(Intent(viewIntent).setPackage("cn.wps.moffice_eng"))
++        }.isSuccess
++        if (openedWithWps) {
++            dialog.dismiss()
++            return
++        }
+         runCatching { startActivity(Intent.createChooser(viewIntent,
+             getString(R.string.kbrowser_downloads_open_with))) }.onFailure {
+             DualScreenCoordinator.cancelExternalViewer()

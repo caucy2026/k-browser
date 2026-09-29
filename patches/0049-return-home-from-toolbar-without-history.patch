@@ -1,0 +1,14 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -1775,8 +1775,9 @@ open class DualScreenBrowserActivity : Activity() {
+     }
+ 
+     @Synchronized
+     fun goBack() {
+-        session?.goBack()
++        val activity = topDisplay.get() ?: controller.get()
++        if (activity != null) navigateBackOrHome(activity)
+     }
+ 
+     @Synchronized

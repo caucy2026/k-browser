@@ -1,0 +1,62 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 51e4851..bda396b 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -560,11 +560,7 @@ open class DualScreenBrowserActivity : Activity() {
+             DualScreenCoordinator.cancelExternalViewer()
+             return
+         }
+-        if (hasRecentMouseActivity()) {
+-            showMouseContextMenu(lastMouseX, lastMouseY)
+-        } else {
+-            DualScreenCoordinator.exitAll()
+-        }
++        if (!DualScreenCoordinator.navigateBackOrHome(this)) DualScreenCoordinator.exitAll()
+     }
+ 
+     private fun dismissKeyboardForBack(): Boolean {
+@@ -1566,6 +1562,7 @@ private object DualScreenCoordinator {
+     private var topSurface: Surface? = null
+     private var bottomSurface: Surface? = null
+     private var currentUrl = DualScreenBrowserActivity.DEFAULT_URL
++    @Volatile private var canGoBack = false
+     private var currentDocumentPath: String? = null
+     private var selectedText: String? = null
+     private var exiting = false
+@@ -1782,6 +1779,17 @@ private object DualScreenCoordinator {
+         session?.goBack()
+     }
+ 
++    @Synchronized
++    fun navigateBackOrHome(activity: DualScreenBrowserActivity): Boolean {
++        if (DualScreenBrowserActivity.isHomeUrl(currentUrl)) return false
++        if (canGoBack) {
++            session?.goBack()
++        } else {
++            navigate(DualScreenBrowserActivity.localizedHomeUrl(activity))
++        }
++        return true
++    }
++
+     @Synchronized
+     fun goForward() {
+         session?.goForward()
+@@ -1868,6 +1876,10 @@ private object DualScreenCoordinator {
+                 }
+             })
+             setNavigationDelegate(object : GeckoSession.NavigationDelegate {
++                override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
++                    this@DualScreenCoordinator.canGoBack = canGoBack
++                }
++
+                 override fun onLoadRequest(
+                     session: GeckoSession,
+                     request: GeckoSession.NavigationDelegate.LoadRequest,
+@@ -2048,6 +2060,7 @@ private object DualScreenCoordinator {
+         geckoDisplay = null
+         activeSession?.close()
+         session = null
++        canGoBack = false
+         currentDocumentPath = null
+         singleScreenSession = false
+         selectedText = null

@@ -22,8 +22,8 @@ while IFS= read -r PATCH || [ -n "$PATCH" ]; do
     exit 1
   }
 
-  git -C "$BROWSER_SRC" apply --check "$PATCH_PATH"
-  git -C "$BROWSER_SRC" apply "$PATCH_PATH"
+  git -C "$BROWSER_SRC" apply --ignore-whitespace --check "$PATCH_PATH"
+  git -C "$BROWSER_SRC" apply --ignore-whitespace "$PATCH_PATH"
   echo "Applied: $PATCH"
 done < "$SERIES"
 

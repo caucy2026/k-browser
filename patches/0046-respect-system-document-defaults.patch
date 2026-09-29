@@ -1,0 +1,27 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index ab88452..d2259ec 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -1314,10 +1314,8 @@ open class DualScreenBrowserActivity : Activity() {
+         val mime = item.mimeType?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+             ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+             ?: "application/octet-stream"
+-        val internalDocument = extension in setOf("txt", "text", "log", "md", "markdown", "csv", "tsv",
+-            "json", "jsonl", "ndjson", "geojson", "xml", "html", "htm", "xhtml", "rtf",
+-            "docx", "docm", "dotx", "dotm", "xlsx", "xlsm", "xltx", "xltm",
+-            "pptx", "pptm", "potx", "potm", "odt", "ods", "odp", "epub")
++        val internalDocument = extension in setOf("txt", "text", "log", "md", "markdown",
++            "json", "jsonl", "ndjson", "geojson", "xml", "html", "htm", "xhtml", "epub")
+         if (internalDocument) {
+             CoroutineScope(Dispatchers.Main).launch {
+                 val result = withContext(Dispatchers.IO) {
+@@ -1346,8 +1344,7 @@ open class DualScreenBrowserActivity : Activity() {
+             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+         }
+         DualScreenCoordinator.expectExternalViewer()
+-        runCatching { startActivity(Intent.createChooser(viewIntent,
+-            getString(R.string.kbrowser_downloads_open_with))) }.onFailure {
++        runCatching { startActivity(viewIntent) }.onFailure {
+             DualScreenCoordinator.cancelExternalViewer()
+             Log.w("KBrowserDownload", "No viewer for download id=${item.id}", it)
+             Toast.makeText(this, getString(R.string.kbrowser_downloads_open_failed), Toast.LENGTH_SHORT).show()

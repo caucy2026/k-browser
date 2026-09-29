@@ -1,0 +1,349 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 6e0ce31..5612a6c 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -25,6 +25,7 @@ import android.os.Looper
+ import android.os.SystemClock
+ import android.util.Log
+ import android.util.TypedValue
++import android.text.format.Formatter
+ import android.webkit.URLUtil
+ import android.view.Display
+ import android.view.Gravity
+@@ -61,6 +62,7 @@ import org.mozilla.geckoview.GeckoResult
+ import org.mozilla.geckoview.GeckoSession
+ import org.mozilla.geckoview.GeckoSessionSettings
+ import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
++import org.mozilla.geckoview.WebResponse
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.launch
+@@ -1048,24 +1050,177 @@ open class DualScreenBrowserActivity : Activity() {
+             get() = Uri.parse(url).host?.removePrefix("www.") ?: url
+     }
+ 
+-    /** Opens Android's completed/in-progress download list without leaving the shared page. */
++    /** Keeps download history in this Activity, so opening it cannot tear down the display pair. */
+     private fun openDownloads() {
+-        runCatching {
+-            startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+-        }.onFailure {
+-            Toast.makeText(this, getString(R.string.kbrowser_downloads_empty), Toast.LENGTH_SHORT).show()
++        val blue = Color.rgb(30, 112, 232)
++        val root = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(20), dp(18), dp(20), dp(18))
++            background = GradientDrawable().apply {
++                setColor(Color.rgb(247, 250, 255))
++                cornerRadius = dp(20).toFloat()
++            }
++        }
++        val header = LinearLayout(this).apply {
++            orientation = LinearLayout.HORIZONTAL
++            gravity = Gravity.CENTER_VERTICAL
++        }
++        val title = TextView(this).apply {
++            text = getString(R.string.kbrowser_downloads_title)
++            textSize = 23f
++            setTextColor(Color.rgb(27, 42, 63))
++            setTypeface(typeface, android.graphics.Typeface.BOLD)
++        }
++        header.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
++        val refresh = TextView(this).apply {
++            text = getString(R.string.kbrowser_downloads_refresh)
++            textSize = 16f
++            gravity = Gravity.CENTER
++            setTextColor(blue)
++            setPadding(dp(14), dp(10), dp(14), dp(10))
++            background = selectableBackground(Color.WHITE)
++        }
++        header.addView(refresh)
++        root.addView(header)
++        val count = TextView(this).apply {
++            textSize = 14f
++            setTextColor(Color.rgb(101, 119, 145))
++            setPadding(0, dp(8), 0, dp(8))
++        }
++        root.addView(count)
++        val items = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
++        root.addView(ScrollView(this).apply { addView(items) },
++            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(430)))
++        root.addView(TextView(this).apply {
++            text = getString(R.string.kbrowser_downloads_location, getString(R.string.kbrowser_download_folder))
++            textSize = 13f
++            setTextColor(Color.rgb(101, 119, 145))
++            setPadding(0, dp(10), 0, 0)
++        })
++        val dialog = AlertDialog.Builder(this)
++            .setView(root)
++            .setPositiveButton(getString(R.string.kbrowser_downloads_close), null)
++            .create()
++        refresh.setOnClickListener { populateDownloads(dialog, items, count) }
++        dialog.setOnShowListener {
++            dialog.window?.apply {
++                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
++                setLayout(minOf(dp(860), (resources.displayMetrics.widthPixels * 0.88f).toInt()),
++                    WindowManager.LayoutParams.WRAP_CONTENT)
++            }
++            populateDownloads(dialog, items, count)
++        }
++        dialog.show()
++    }
++
++    private data class DownloadListItem(
++        val title: String,
++        val status: Int,
++        val downloaded: Long,
++        val total: Long,
++        val modified: Long,
++    )
++
++    private fun queryDownloads(): List<DownloadListItem> {
++        val manager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
++        val rows = mutableListOf<DownloadListItem>()
++        manager.query(DownloadManager.Query())?.use { cursor ->
++            val titleColumn = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
++            val statusColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
++            val downloadedColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
++            val totalColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
++            val modifiedColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LAST_MODIFIED_TIMESTAMP)
++            while (cursor.moveToNext()) {
++                rows.add(DownloadListItem(
++                    title = if (titleColumn >= 0) cursor.getString(titleColumn).orEmpty() else "",
++                    status = cursor.getInt(statusColumn),
++                    downloaded = cursor.getLong(downloadedColumn),
++                    total = cursor.getLong(totalColumn),
++                    modified = cursor.getLong(modifiedColumn),
++                ))
++            }
++        }
++        return rows.sortedByDescending { it.modified }.take(100)
++    }
++
++    private fun populateDownloads(dialog: AlertDialog, items: LinearLayout, count: TextView) {
++        items.removeAllViews()
++        count.text = getString(R.string.kbrowser_downloads_loading)
++        CoroutineScope(Dispatchers.Main).launch {
++            val result = withContext(Dispatchers.IO) { runCatching { queryDownloads() } }
++            if (!dialog.isShowing || isFinishing || isDestroyed) return@launch
++            items.removeAllViews()
++            result.onSuccess { downloads ->
++                count.text = getString(R.string.kbrowser_downloads_count, downloads.size)
++                if (downloads.isEmpty()) {
++                    items.addView(downloadMessage(getString(R.string.kbrowser_downloads_empty)))
++                } else {
++                    downloads.forEachIndexed { index, item ->
++                        val status = when (item.status) {
++                            DownloadManager.STATUS_SUCCESSFUL -> getString(R.string.kbrowser_downloads_complete)
++                            DownloadManager.STATUS_FAILED -> getString(R.string.kbrowser_downloads_failed)
++                            DownloadManager.STATUS_PAUSED -> getString(R.string.kbrowser_downloads_paused)
++                            DownloadManager.STATUS_RUNNING -> getString(R.string.kbrowser_downloads_running)
++                            else -> getString(R.string.kbrowser_downloads_pending)
++                        }
++                        val size = if (item.total > 0) {
++                            getString(R.string.kbrowser_downloads_progress,
++                                Formatter.formatFileSize(this@DualScreenBrowserActivity, item.downloaded.coerceAtLeast(0)),
++                                Formatter.formatFileSize(this@DualScreenBrowserActivity, item.total))
++                        } else {
++                            Formatter.formatFileSize(this@DualScreenBrowserActivity, item.downloaded.coerceAtLeast(0))
++                        }
++                        val card = LinearLayout(this@DualScreenBrowserActivity).apply {
++                            orientation = LinearLayout.VERTICAL
++                            setPadding(dp(18), dp(13), dp(18), dp(13))
++                            background = selectableBackground(Color.WHITE)
++                            addView(TextView(this@DualScreenBrowserActivity).apply {
++                                text = item.title.ifBlank { getString(R.string.kbrowser_downloads_unnamed) }
++                                textSize = 17f
++                                setTextColor(Color.rgb(27, 42, 63))
++                                maxLines = 2
++                                ellipsize = android.text.TextUtils.TruncateAt.END
++                            })
++                            addView(TextView(this@DualScreenBrowserActivity).apply {
++                                text = "$status · $size"
++                                textSize = 14f
++                                setTextColor(Color.rgb(101, 119, 145))
++                                setPadding(0, dp(5), 0, 0)
++                            })
++                        }
++                        items.addView(card, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
++                            LinearLayout.LayoutParams.WRAP_CONTENT).apply {
++                            if (index > 0) topMargin = dp(8)
++                        })
++                    }
++                }
++            }.onFailure {
++                Log.w("KBrowserDownload", "Unable to query downloads", it)
++                count.text = getString(R.string.kbrowser_downloads_failed_to_load)
++                items.addView(downloadMessage(getString(R.string.kbrowser_downloads_failed_to_load)))
++            }
+         }
+     }
+ 
++    private fun downloadMessage(message: String): TextView = TextView(this).apply {
++        text = message
++        textSize = 17f
++        gravity = Gravity.CENTER
++        setTextColor(Color.rgb(101, 119, 145))
++        setPadding(dp(20), dp(72), dp(20), dp(72))
++    }
++
+     /** Enqueues a link with the system DownloadManager so direct file links work on both modes. */
+-    internal fun downloadUrl(url: String) {
++    internal fun downloadUrl(url: String, contentDisposition: String? = null, mimeType: String? = null) {
+         if (!url.startsWith("http://") && !url.startsWith("https://")) {
+             Toast.makeText(this, getString(R.string.kbrowser_download_unsupported), Toast.LENGTH_SHORT).show()
+             return
+         }
+-        val fileName = URLUtil.guessFileName(url, null, null).ifBlank { "kemi-download" }
++        val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
++            .substringAfterLast('/').substringAfterLast('\\').ifBlank { "kemi-download" }
+         val request = DownloadManager.Request(android.net.Uri.parse(url)).apply {
+             setTitle(fileName)
++            mimeType?.takeIf { it.isNotBlank() }?.let(::setMimeType)
+             setDescription(getString(R.string.kbrowser_download_notification_desc, getString(R.string.kbrowser_download_folder)))
+             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+             setAllowedOverMetered(true)
+@@ -1559,6 +1714,18 @@ private object DualScreenCoordinator {
+                 }
+             })
+             setContentDelegate(object : GeckoSession.ContentDelegate {
++                override fun onExternalResponse(session: GeckoSession, webResponse: WebResponse) {
++                    val disposition = webResponse.headers.entries.firstOrNull {
++                        it.key.equals("content-disposition", ignoreCase = true)
++                    }?.value
++                    val mimeType = webResponse.headers.entries.firstOrNull {
++                        it.key.equals("content-type", ignoreCase = true)
++                    }?.value?.substringBefore(';')?.trim()
++                    mainHandler.post {
++                        (topDisplay.get() ?: controller.get())?.downloadUrl(webResponse.uri, disposition, mimeType)
++                    }
++                }
++
+                 override fun onContextMenu(
+                     session: GeckoSession,
+                     screenX: Int,
+diff --git a/app/src/main/res/values-zh-rCN/kbrowser_strings.xml b/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
+index c02061f..eb5c5fc 100644
+--- a/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
+@@ -86,6 +86,20 @@
+     <string name="kbrowser_bookmarks_delete_failed">删除失败，请重试</string>
+ 
+     <string name="kbrowser_downloads_empty">当前没有可查看的下载</string>
++    <string name="kbrowser_downloads_title">下载记录</string>
++    <string name="kbrowser_downloads_refresh">刷新</string>
++    <string name="kbrowser_downloads_close">关闭</string>
++    <string name="kbrowser_downloads_location">文件保存在 Download/%1$s；点按刷新可更新进度。</string>
++    <string name="kbrowser_downloads_loading">正在读取下载记录…</string>
++    <string name="kbrowser_downloads_count">共 %1$d 个下载</string>
++    <string name="kbrowser_downloads_complete">已完成</string>
++    <string name="kbrowser_downloads_failed">失败</string>
++    <string name="kbrowser_downloads_paused">已暂停</string>
++    <string name="kbrowser_downloads_running">下载中</string>
++    <string name="kbrowser_downloads_pending">等待中</string>
++    <string name="kbrowser_downloads_progress">%1$s / %2$s</string>
++    <string name="kbrowser_downloads_unnamed">未命名下载</string>
++    <string name="kbrowser_downloads_failed_to_load">无法读取下载记录</string>
+     <string name="kbrowser_download_unsupported">此链接不能下载</string>
+     <string name="kbrowser_download_notification_desc">保存到 Download/%1$s</string>
+     <string name="kbrowser_download_path">%1$s/%2$s</string>
+diff --git a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+index 53c3e8d..a03f568 100644
+--- a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+@@ -86,6 +86,20 @@
+     <string name="kbrowser_bookmarks_delete_failed">刪除失敗，請再試一次</string>
+ 
+     <string name="kbrowser_downloads_empty">目前沒有可檢視的下載</string>
++    <string name="kbrowser_downloads_title">下載記錄</string>
++    <string name="kbrowser_downloads_refresh">重新整理</string>
++    <string name="kbrowser_downloads_close">關閉</string>
++    <string name="kbrowser_downloads_location">檔案儲存在 Download/%1$s；點按重新整理可更新進度。</string>
++    <string name="kbrowser_downloads_loading">正在讀取下載記錄…</string>
++    <string name="kbrowser_downloads_count">共 %1$d 個下載</string>
++    <string name="kbrowser_downloads_complete">已完成</string>
++    <string name="kbrowser_downloads_failed">失敗</string>
++    <string name="kbrowser_downloads_paused">已暫停</string>
++    <string name="kbrowser_downloads_running">下載中</string>
++    <string name="kbrowser_downloads_pending">等待中</string>
++    <string name="kbrowser_downloads_progress">%1$s / %2$s</string>
++    <string name="kbrowser_downloads_unnamed">未命名下載</string>
++    <string name="kbrowser_downloads_failed_to_load">無法讀取下載記錄</string>
+     <string name="kbrowser_download_unsupported">此連結無法下載</string>
+     <string name="kbrowser_download_notification_desc">儲存到 Download/%1$s</string>
+     <string name="kbrowser_download_path">%1$s/%2$s</string>
+diff --git a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+index 53c3e8d..a03f568 100644
+--- a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+@@ -86,6 +86,20 @@
+     <string name="kbrowser_bookmarks_delete_failed">刪除失敗，請再試一次</string>
+ 
+     <string name="kbrowser_downloads_empty">目前沒有可檢視的下載</string>
++    <string name="kbrowser_downloads_title">下載記錄</string>
++    <string name="kbrowser_downloads_refresh">重新整理</string>
++    <string name="kbrowser_downloads_close">關閉</string>
++    <string name="kbrowser_downloads_location">檔案儲存在 Download/%1$s；點按重新整理可更新進度。</string>
++    <string name="kbrowser_downloads_loading">正在讀取下載記錄…</string>
++    <string name="kbrowser_downloads_count">共 %1$d 個下載</string>
++    <string name="kbrowser_downloads_complete">已完成</string>
++    <string name="kbrowser_downloads_failed">失敗</string>
++    <string name="kbrowser_downloads_paused">已暫停</string>
++    <string name="kbrowser_downloads_running">下載中</string>
++    <string name="kbrowser_downloads_pending">等待中</string>
++    <string name="kbrowser_downloads_progress">%1$s / %2$s</string>
++    <string name="kbrowser_downloads_unnamed">未命名下載</string>
++    <string name="kbrowser_downloads_failed_to_load">無法讀取下載記錄</string>
+     <string name="kbrowser_download_unsupported">此連結無法下載</string>
+     <string name="kbrowser_download_notification_desc">儲存到 Download/%1$s</string>
+     <string name="kbrowser_download_path">%1$s/%2$s</string>
+diff --git a/app/src/main/res/values-zh/kbrowser_strings.xml b/app/src/main/res/values-zh/kbrowser_strings.xml
+index c02061f..eb5c5fc 100644
+--- a/app/src/main/res/values-zh/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh/kbrowser_strings.xml
+@@ -86,6 +86,20 @@
+     <string name="kbrowser_bookmarks_delete_failed">删除失败，请重试</string>
+ 
+     <string name="kbrowser_downloads_empty">当前没有可查看的下载</string>
++    <string name="kbrowser_downloads_title">下载记录</string>
++    <string name="kbrowser_downloads_refresh">刷新</string>
++    <string name="kbrowser_downloads_close">关闭</string>
++    <string name="kbrowser_downloads_location">文件保存在 Download/%1$s；点按刷新可更新进度。</string>
++    <string name="kbrowser_downloads_loading">正在读取下载记录…</string>
++    <string name="kbrowser_downloads_count">共 %1$d 个下载</string>
++    <string name="kbrowser_downloads_complete">已完成</string>
++    <string name="kbrowser_downloads_failed">失败</string>
++    <string name="kbrowser_downloads_paused">已暂停</string>
++    <string name="kbrowser_downloads_running">下载中</string>
++    <string name="kbrowser_downloads_pending">等待中</string>
++    <string name="kbrowser_downloads_progress">%1$s / %2$s</string>
++    <string name="kbrowser_downloads_unnamed">未命名下载</string>
++    <string name="kbrowser_downloads_failed_to_load">无法读取下载记录</string>
+     <string name="kbrowser_download_unsupported">此链接不能下载</string>
+     <string name="kbrowser_download_notification_desc">保存到 Download/%1$s</string>
+     <string name="kbrowser_download_path">%1$s/%2$s</string>
+diff --git a/app/src/main/res/values/kbrowser_strings.xml b/app/src/main/res/values/kbrowser_strings.xml
+index 91d089a..8ad0541 100644
+--- a/app/src/main/res/values/kbrowser_strings.xml
++++ b/app/src/main/res/values/kbrowser_strings.xml
+@@ -93,6 +93,20 @@
+ 
+     <!-- Downloads -->
+     <string name="kbrowser_downloads_empty">No downloads to show</string>
++    <string name="kbrowser_downloads_title">Downloads</string>
++    <string name="kbrowser_downloads_refresh">Refresh</string>
++    <string name="kbrowser_downloads_close">Close</string>
++    <string name="kbrowser_downloads_location">Saved in Download/%1$s. Tap Refresh to update progress.</string>
++    <string name="kbrowser_downloads_loading">Loading downloads…</string>
++    <string name="kbrowser_downloads_count">%1$d downloads</string>
++    <string name="kbrowser_downloads_complete">Completed</string>
++    <string name="kbrowser_downloads_failed">Failed</string>
++    <string name="kbrowser_downloads_paused">Paused</string>
++    <string name="kbrowser_downloads_running">Downloading</string>
++    <string name="kbrowser_downloads_pending">Waiting</string>
++    <string name="kbrowser_downloads_progress">%1$s / %2$s</string>
++    <string name="kbrowser_downloads_unnamed">Unnamed download</string>
++    <string name="kbrowser_downloads_failed_to_load">Could not load downloads</string>
+     <string name="kbrowser_download_unsupported">This link cannot be downloaded</string>
+     <string name="kbrowser_download_notification_desc">Saving to Download/%1$s</string>
+     <string name="kbrowser_download_path">%1$s/%2$s</string>

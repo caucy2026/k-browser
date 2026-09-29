@@ -74,7 +74,7 @@ diff --git a/app/src/main/assets/dual_screen_home.html b/app/src/main/assets/dua
 -    <a href="https://www.baidu.com/">百度<span>知识搜索</span></a>
 -    <a href="https://baike.baidu.com/">百度百科<span>中文百科</span></a>
 -    <a href="https://www.zhihu.com/">知乎<span>问答社区</span></a>
--    <a href="https://www.tianya.net/">天涯社区<span>中文社区精选</span></a>
+-    <a href="https://www.tianya.net/index.html" target="_self">天涯社区<span>中文社区精选</span></a>
 -    <a href="https://developer.mozilla.org/zh-CN/">MDN<span>Web 开发文档</span></a>
 -    <a href="https://www.w3.org/">W3C<span>Web 标准</span></a>
 -    <a href="https://www.cnki.net/">中国知网<span>学术检索</span></a>

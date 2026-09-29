@@ -1,1 +1,5 @@
-*.patch -whitespace
+*.patch text eol=lf -whitespace
+*.sh text eol=lf
+*.py text eol=lf
+*.env text eol=lf
+patches/series text eol=lf

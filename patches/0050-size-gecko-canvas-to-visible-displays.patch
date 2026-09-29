@@ -1,0 +1,38 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -101,4 +101,4 @@
+ /**
+- * One Gecko session renders a 1920 x 2560 canvas. The shared compositor sends
+- * its top half to Display 2 and bottom half to Display 0.
++ * One Gecko session renders a canvas sized to both visible content areas. The
++ * shared compositor sends its upper area to Display 2 and lower area to Display 0.
+  */
+@@ -1492,5 +1492,4 @@
+         const val TOOLBAR_HEIGHT_DP = 136
+         const val TARGET_WIDTH_PX = 1920
+         const val TARGET_VIEWPORT_HEIGHT_PX = 1280
+-        const val TARGET_CANVAS_HEIGHT_PX = 2560
+         const val TARGET_REFRESH_RATE = 60f
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenSharedCompositor.kt
+@@ -20,4 +20,4 @@
+ /**
+- * Consumes one 1920x2560 Gecko frame and presents its two halves on the two
+- * physical displays. Both EGL window surfaces are drawn from the same texture
++ * Consumes one Gecko frame sized to the combined visible content areas and
++ * presents it on the two physical displays. Both EGL window surfaces are drawn from the same texture
+  * before the next Gecko frame is acquired, so the seam cannot drift by a frame.
+@@ -353,10 +353,9 @@
+     val canvasHeight: Int
+-        get() = if (singleScreen) OUTPUT_HEIGHT else DUAL_CANVAS_HEIGHT
++        get() = if (singleScreen) OUTPUT_HEIGHT else OUTPUT_HEIGHT * 2 - topChromeHeightPx
+ 
+     companion object {
+         private const val TAG = "KBrowserCompositor"
+         private const val CANVAS_WIDTH = 1920
+-        private const val DUAL_CANVAS_HEIGHT = 2560
+         private const val OUTPUT_WIDTH = 1920
+         private const val OUTPUT_HEIGHT = 1280
+ 

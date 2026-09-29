@@ -35,3 +35,17 @@ patches/0036-expand-programmer-document-formats.patch
 patches/0037-redesign-bookmarks-with-delete.patch
 patches/0038-fix-dual-screen-layout-and-branding.patch
 patches/0039-fix-home-layout-and-release-version.patch
+patches/0040-fix-toolbar-documents-ime-and-game-compatibility.patch
+patches/0041-keep-downloads-inside-browser.patch
+patches/0042-open-downloads-and-show-progress.patch
+patches/0043-auto-refresh-downloads-and-open-row.patch
+patches/0044-remove-download-footer-and-prefer-wps-for-pdf.patch
+patches/0045-use-system-chooser-for-pdf.patch
+patches/0046-respect-system-document-defaults.patch
+patches/0047-keep-browser-open-on-system-back.patch
+patches/0048-open-pdf-with-koffice-first.patch
+patches/0049-return-home-from-toolbar-without-history.patch
+patches/0050-size-gecko-canvas-to-visible-displays.patch
+patches/0051-allow-browser-navigation-from-game.patch
+patches/0052-use-refresh-label-in-traditional-toolbar.patch
+patches/0053-disable-txt-file-opening.patch

@@ -1,0 +1,163 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -24,6 +24,7 @@
+ import android.os.Looper
+ import android.os.SystemClock
+ import android.util.Log
++import android.util.TypedValue
+ import android.webkit.URLUtil
+ import android.view.Display
+ import android.view.Gravity
+@@ -58,6 +59,7 @@
+ import org.mozilla.geckoview.GeckoDisplay
+ import org.mozilla.geckoview.GeckoResult
+ import org.mozilla.geckoview.GeckoSession
++import org.mozilla.geckoview.GeckoSessionSettings
+ import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+@@ -114,6 +116,9 @@
+     private var lastMouseEventAt = Long.MIN_VALUE
+     private var pendingMouseSelection: String? = null
+     private var launchingPeerDisplay = false
++    private var dismissingKeyboardBack = false
++    private var keyboardVisible = false
++    private var keyboardHiddenAt = 0L
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+@@ -188,6 +193,12 @@
+             }
+         }
+         setContentView(rootLayout)
++        rootLayout.setOnApplyWindowInsetsListener { _, insets ->
++            val visible = insets.isVisible(WindowInsets.Type.ime())
++            if (keyboardVisible && !visible) keyboardHiddenAt = SystemClock.uptimeMillis()
++            keyboardVisible = visible
++            insets
++        }
+         enterFullscreen()
+ 
+         components.core.engine.settings.apply {
+@@ -401,6 +412,11 @@
+             text = label
+             textSize = if (emphasized) 15f else 16f
+             gravity = Gravity.CENTER
++            textAlignment = View.TEXT_ALIGNMENT_CENTER
++            maxLines = 1
++            includeFontPadding = false
++            setPadding(dp(4), 0, dp(4), 0)
++            setAutoSizeTextTypeUniformWithConfiguration(11, if (emphasized) 15 else 16, 1, TypedValue.COMPLEX_UNIT_SP)
+             contentDescription = description
+             setTextColor(if (emphasized) Color.WHITE else Color.rgb(45, 58, 78))
+             background = navButtonBackground(emphasized)
+@@ -535,6 +551,7 @@
+ 
+     @Deprecated("Deprecated in Android")
+     override fun onBackPressed() {
++        if (dismissKeyboardForBack()) return
+         if (hasRecentMouseActivity()) {
+             showMouseContextMenu(lastMouseX, lastMouseY)
+         } else {
+@@ -542,7 +559,29 @@
+         }
+     }
+ 
++    private fun dismissKeyboardForBack(): Boolean {
++        val visible = keyboardVisible || window.decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
++        if (visible) {
++            window.insetsController?.hide(WindowInsets.Type.ime())
++            (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
++                .hideSoftInputFromWindow((currentFocus ?: rootLayout).windowToken, 0)
++            keyboardHiddenAt = SystemClock.uptimeMillis()
++            return true
++        }
++        // Some S1 IMEs hide themselves, then deliver the same Back to the Activity.
++        return keyboardHiddenAt > 0 && SystemClock.uptimeMillis() - keyboardHiddenAt < 300
++    }
++
+     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
++        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
++            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
++                dismissingKeyboardBack = dismissKeyboardForBack()
++            }
++            if (dismissingKeyboardBack) {
++                if (event.action == KeyEvent.ACTION_UP) dismissingKeyboardBack = false
++                return true
++            }
++        }
+         if (event.keyCode == KeyEvent.KEYCODE_BACK && event.isFromSource(InputDevice.SOURCE_MOUSE)) {
+             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                 showMouseContextMenu(lastMouseX, lastMouseY)
+@@ -1243,7 +1282,7 @@
+                 } else if (documentPath == null && initialUrl.isNotBlank()) {
+                     currentDocumentPath = null
+                     currentUrl = initialUrl
+-                    session?.loadUri(initialUrl)
++                    session?.let { applySiteSettings(it, initialUrl); it.loadUri(initialUrl) }
+                 }
+             }
+         }
+@@ -1395,7 +1434,7 @@
+     @Synchronized
+     fun navigate(url: String) {
+         currentDocumentPath = null
+-        session?.loadUri(url)
++        session?.let { applySiteSettings(it, url); it.loadUri(url) }
+     }
+ 
+     @Synchronized
+@@ -1451,6 +1490,14 @@
+         shutdownSession()
+         topDisplay.get()?.runOnUiThread { topDisplay.get()?.finishFromPair() }
+         controller.get()?.runOnUiThread { controller.get()?.finishFromPair() }
++    }
++
++    private fun applySiteSettings(target: GeckoSession, url: String) {
++        // Minecraft Classic rejects all Android UAs before testing game input.
++        // Keep mobile layouts for other sites; only this desktop game needs the override.
++        val desktop = Uri.parse(url).host.equals("classic.minecraft.net", ignoreCase = true)
++        target.settings.userAgentMode = if (desktop) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else GeckoSessionSettings.USER_AGENT_MODE_MOBILE
++        target.settings.viewportMode = if (desktop) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP else GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+     }
+ 
+     private fun ensureSession(
+@@ -1463,6 +1510,7 @@
+         singleScreenSession = singleScreen
+         currentUrl = initialUrl
+         val createdSession = GeckoSession().apply {
++            applySiteSettings(this, initialUrl)
+             setProgressDelegate(object : GeckoSession.ProgressDelegate {
+                 override fun onPageStart(session: GeckoSession, url: String) {
+                     ttsController?.stop("page-start")
+@@ -1484,6 +1532,7 @@
+                     session: GeckoSession,
+                     request: GeckoSession.NavigationDelegate.LoadRequest,
+                 ): GeckoResult<AllowOrDeny> {
++                    applySiteSettings(session, request.uri)
+                     if (isDirectDownload(request.uri)) {
+                         mainHandler.post {
+                             (topDisplay.get() ?: controller.get())?.downloadUrl(request.uri)
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DocumentReader.kt
+@@ -166,6 +166,7 @@
+     private fun convert(format: String, title: String, bytes: ByteArray): String = when (format) {
+         "html", "htm", "xhtml" -> sanitizeHtml(decodeText(bytes))
+         "md", "markdown" -> markdown(decodeText(bytes))
++        "txt", "text", "log" -> "<pre class=plain-text>${escape(decodeText(bytes).take(MAX_TEXT_CHARS))}</pre>"
+         "json", "geojson", "har" -> codeBlock(prettyJson(decodeText(bytes)), "JSON")
+         "jsonl", "ndjson" -> codeBlock(decodeText(bytes), "JSON Lines")
+         "ipynb" -> notebook(decodeText(bytes))
+@@ -653,8 +654,9 @@
+         main{width:min(1680px,calc(100% - 96px));margin:104px auto 120px;background:#fff;border:1px solid #dce6f3;
+         border-radius:18px;padding:54px 68px;box-shadow:0 10px 36px #1d4c8420}h1{font-size:44px;line-height:1.25;margin:0 0 12px}
+         h2{font-size:34px;margin:1.3em 0 .5em}h3{font-size:29px}.meta{color:#58708d;font-size:20px;margin-bottom:36px}
+-        p{margin:.55em 0}.gap{height:16px}.bullet{padding-left:1em}pre{overflow:auto;background:#102033;color:#e9f3ff;
++        p{margin:.55em 0;overflow-wrap:anywhere}h1{overflow-wrap:anywhere}.gap{height:16px}.bullet{padding-left:1em}pre{overflow:auto;background:#102033;color:#e9f3ff;
+         border-radius:12px;padding:28px;font:22px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:4;white-space:pre}
++        .plain-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal;max-width:100%;background:transparent;color:inherit;padding:0;font:inherit}
+         code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.table-wrap{overflow:auto;margin:24px 0}
+         table{border-collapse:collapse;min-width:100%}th,td{border:1px solid #cbd8e8;padding:12px 16px;text-align:left;vertical-align:top}
+         th{position:sticky;top:80px;background:#eaf3ff;color:#123e70}.warning,.error{background:#fff5d9;border-left:6px solid #e0a000;padding:18px 24px}

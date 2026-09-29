@@ -1,0 +1,65 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -292,6 +292,7 @@
+         controls.addView(navButton(getString(R.string.kbrowser_nav_forward), getString(R.string.kbrowser_nav_forward_desc), dp(90)) { DualScreenCoordinator.goForward() })
+         controls.addView(navButton(getString(R.string.kbrowser_nav_reload), getString(R.string.kbrowser_nav_reload_desc), dp(84)) { DualScreenCoordinator.reload() })
+         controls.addView(navButton(getString(R.string.kbrowser_nav_home), getString(R.string.kbrowser_nav_home_desc), dp(80)) {
++            Log.i("KBrowserNavigation", "Home toolbar click")
+             DualScreenCoordinator.navigate(localizedHomeUrl(this))
+         })
+         controls.addView(navButton(getString(R.string.kbrowser_nav_bookmark), getString(R.string.kbrowser_nav_bookmark_desc), dp(80)) {
+@@ -1562,6 +1563,7 @@
+     private var bottomSurface: Surface? = null
+     private var currentUrl = DualScreenBrowserActivity.DEFAULT_URL
+     @Volatile private var canGoBack = false
++    @Volatile private var browserNavigationAt = 0L
+     private var currentDocumentPath: String? = null
+     private var selectedText: String? = null
+     private var exiting = false
+@@ -1770,11 +1772,13 @@
+     @Synchronized
+     fun navigate(url: String) {
+         currentDocumentPath = null
++        browserNavigationAt = SystemClock.uptimeMillis()
+         session?.let { applySiteSettings(it, url); it.loadUri(url) }
+     }
+ 
+     @Synchronized
+     fun goBack() {
++        Log.i("KBrowserNavigation", "Back toolbar click")
+         val activity = topDisplay.get() ?: controller.get()
+         if (activity != null) navigateBackOrHome(activity)
+     }
+@@ -1782,7 +1786,10 @@
+     @Synchronized
+     fun navigateBackOrHome(activity: DualScreenBrowserActivity): Boolean {
+         if (DualScreenBrowserActivity.isHomeUrl(currentUrl)) return false
+-        if (canGoBack) {
++        if (Uri.parse(currentUrl).host?.equals("mcjs-mirror.144449.xyz", ignoreCase = true) == true) {
++            navigate(DualScreenBrowserActivity.localizedHomeUrl(activity))
++        } else if (canGoBack) {
++            browserNavigationAt = SystemClock.uptimeMillis()
+             session?.goBack()
+         } else {
+             navigate(DualScreenBrowserActivity.localizedHomeUrl(activity))
+@@ -1859,6 +1866,19 @@
+         currentUrl = initialUrl
+         val createdSession = GeckoSession().apply {
+             applySiteSettings(this, initialUrl)
++            setPromptDelegate(object : GeckoSession.PromptDelegate {
++                override fun onBeforeUnloadPrompt(
++                    session: GeckoSession,
++                    prompt: GeckoSession.PromptDelegate.BeforeUnloadPrompt,
++                ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? {
++                    val recentBrowserNavigation = browserNavigationAt > 0 &&
++                        SystemClock.uptimeMillis() - browserNavigationAt in 0..15_000
++                    if (!recentBrowserNavigation) return null
++                    browserNavigationAt = 0L
++                    Log.i("KBrowserNavigation", "Allowing beforeunload for browser navigation")
++                    return GeckoResult.fromValue(prompt.confirm(AllowOrDeny.ALLOW))
++                }
++            })
+             setProgressDelegate(object : GeckoSession.ProgressDelegate {
+                 override fun onPageStart(session: GeckoSession, url: String) {
+                     ttsController?.stop("page-start")

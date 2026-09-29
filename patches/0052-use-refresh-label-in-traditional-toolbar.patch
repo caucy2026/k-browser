@@ -1,0 +1,20 @@
+diff --git a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+--- a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+@@ -8,4 +8,4 @@
+     <string name="kbrowser_nav_forward_desc">下一頁</string>
+-    <string name="kbrowser_nav_reload">↻ 重新整理</string>
+-    <string name="kbrowser_nav_reload_desc">重新整理</string>
++    <string name="kbrowser_nav_reload">↻ 刷新</string>
++    <string name="kbrowser_nav_reload_desc">刷新</string>
+     <string name="kbrowser_nav_home">⌂ 首頁</string>
+diff --git a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+--- a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+@@ -8,4 +8,4 @@
+     <string name="kbrowser_nav_forward_desc">下一頁</string>
+-    <string name="kbrowser_nav_reload">↻ 重新整理</string>
+-    <string name="kbrowser_nav_reload_desc">重新整理</string>
++    <string name="kbrowser_nav_reload">↻ 刷新</string>
++    <string name="kbrowser_nav_reload_desc">刷新</string>
+     <string name="kbrowser_nav_home">⌂ 首頁</string>

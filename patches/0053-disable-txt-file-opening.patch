@@ -1,0 +1,28 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -526,4 +526,9 @@
+                 <data android:scheme="content" />
+                 <data android:scheme="file" />
+-                <data android:mimeType="text/*" />
++                <data android:mimeType="text/html" />
++                <data android:mimeType="text/markdown" />
++                <data android:mimeType="text/csv" />
++                <data android:mimeType="text/tab-separated-values" />
++                <data android:mimeType="text/xml" />
++                <data android:mimeType="text/yaml" />
+                 <data android:mimeType="application/json" />
+@@ -559,5 +564,4 @@
+                 <data android:mimeType="application/pkix-cert" />
+                 <data android:mimeType="text/calendar" />
+                 <data android:mimeType="text/vcard" />
+-                <data android:mimeType="application/octet-stream" />
+             </intent-filter>
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -1313,3 +1313,3 @@
+             ?: "application/octet-stream"
+-        val internalDocument = extension in setOf("txt", "text", "log", "md", "markdown",
++        val internalDocument = extension in setOf("text", "log", "md", "markdown",
+             "json", "jsonl", "ndjson", "geojson", "xml", "html", "htm", "xhtml", "epub")

@@ -1,0 +1,717 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserDownloads.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserDownloads.kt
+new file mode 100644
+index 0000000..d564bf2
+--- /dev/null
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/BrowserDownloads.kt
+@@ -0,0 +1,270 @@
++package org.mozilla.fenix.dualscreen
++
++import android.content.ContentValues
++import android.content.Context
++import android.net.Uri
++import android.os.Build
++import android.os.Environment
++import android.provider.MediaStore
++import android.util.Log
++import org.json.JSONArray
++import org.json.JSONObject
++import java.io.File
++import java.io.FileOutputStream
++import java.net.HttpURLConnection
++import java.net.URL
++import java.util.concurrent.Executors
++import java.util.concurrent.CountDownLatch
++
++/** App-owned transfers provide a real Range-based pause/resume, which DownloadManager does not expose. */
++internal object BrowserDownloads {
++    const val RUNNING = 1
++    const val PAUSED = 2
++    const val COMPLETE = 3
++    const val FAILED = 4
++
++    data class Item(
++        val id: Long,
++        val url: String,
++        val title: String,
++        val mime: String,
++        val referer: String,
++        val status: Int,
++        val bytes: Long,
++        val total: Long,
++        val etag: String,
++        val uri: String,
++        val modified: Long,
++    )
++
++    private val lock = Any()
++    private val pool = Executors.newCachedThreadPool()
++    private val items = linkedMapOf<Long, Item>()
++    private val active = mutableMapOf<Long, Transfer>()
++    private lateinit var app: Context
++
++    private class Transfer {
++        @Volatile var stopped = false
++        @Volatile var connection: HttpURLConnection? = null
++        val done = CountDownLatch(1)
++        fun stop() {
++            stopped = true
++            connection?.disconnect()
++        }
++    }
++
++    private fun initialize(context: Context) = synchronized(lock) {
++        if (::app.isInitialized) return@synchronized
++        app = context.applicationContext
++        val saved = app.getSharedPreferences("kbrowser_downloads", Context.MODE_PRIVATE)
++            .getString("items", "[]").orEmpty()
++        runCatching {
++            val array = JSONArray(saved)
++            for (index in 0 until array.length()) {
++                val row = array.getJSONObject(index)
++                val item = Item(
++                    row.getLong("id"), row.getString("url"), row.getString("title"),
++                    row.optString("mime"), row.optString("referer"),
++                    row.getInt("status").let { if (it == RUNNING) PAUSED else it },
++                    row.optLong("bytes"), row.optLong("total", -1), row.optString("etag"),
++                    row.optString("uri"), row.optLong("modified"),
++                )
++                items[item.id] = item
++            }
++        }.onFailure { Log.w("KBrowserDownload", "Unable to load saved transfers", it) }
++    }
++
++    private fun save() {
++        val array = JSONArray()
++        items.values.forEach { item ->
++            array.put(JSONObject().apply {
++                put("id", item.id); put("url", item.url); put("title", item.title)
++                put("mime", item.mime); put("referer", item.referer); put("status", item.status)
++                put("bytes", item.bytes); put("total", item.total); put("etag", item.etag)
++                put("uri", item.uri); put("modified", item.modified)
++            })
++        }
++        app.getSharedPreferences("kbrowser_downloads", Context.MODE_PRIVATE)
++            .edit().putString("items", array.toString()).apply()
++    }
++
++    fun list(context: Context): List<Item> {
++        initialize(context)
++        return synchronized(lock) { items.values.sortedByDescending { it.modified }.take(100) }
++    }
++
++    fun enqueue(context: Context, url: String, title: String, mime: String?, referer: String): Long {
++        initialize(context)
++        val id = synchronized(lock) {
++            var next = System.currentTimeMillis()
++            while (items.containsKey(next)) next++
++            val item = Item(next, url, title, mime.orEmpty(), referer, RUNNING, 0, -1, "", "",
++                System.currentTimeMillis())
++            items[next] = item
++            save()
++            next
++        }
++        start(id)
++        return id
++    }
++
++    fun pause(context: Context, id: Long) {
++        initialize(context)
++        synchronized(lock) {
++            val item = items[id] ?: return
++            if (item.status != RUNNING) return
++            items[id] = item.copy(status = PAUSED, modified = System.currentTimeMillis())
++            active[id]?.stop()
++            save()
++        }
++    }
++
++    fun resume(context: Context, id: Long) {
++        initialize(context)
++        val previous = synchronized(lock) {
++            val item = items[id] ?: return
++            if (item.status != PAUSED && item.status != FAILED) return
++            items[id] = item.copy(status = RUNNING, modified = System.currentTimeMillis())
++            save()
++            active[id]
++        }
++        pool.execute {
++            previous?.done?.await()
++            start(id)
++        }
++    }
++
++    fun delete(context: Context, id: Long) {
++        initialize(context)
++        val removed = synchronized(lock) {
++            active.remove(id)?.stop()
++            items.remove(id).also { save() }
++        } ?: return
++        partial(id).delete()
++        if (removed.uri.isNotEmpty()) runCatching { app.contentResolver.delete(Uri.parse(removed.uri), null, null) }
++    }
++
++    private fun partial(id: Long): File = File(app.filesDir, "downloads/$id.part").apply {
++        parentFile?.mkdirs()
++    }
++
++    private fun start(id: Long) {
++        val transfer = Transfer()
++        synchronized(lock) {
++            if (items[id]?.status != RUNNING) return
++            active[id] = transfer
++        }
++        pool.execute { run(id, transfer) }
++    }
++
++    private fun run(id: Long, transfer: Transfer) {
++        var lastSaved = 0L
++        try {
++            val item = synchronized(lock) { items[id] } ?: return
++            val file = partial(id)
++            val offset = file.length()
++            val connection = (URL(item.url).openConnection() as HttpURLConnection).apply {
++                connectTimeout = 15000
++                readTimeout = 15000
++                setRequestProperty("User-Agent", "Mozilla/5.0 KEMIBrowser/1.0")
++                if (item.referer.startsWith("http")) setRequestProperty("Referer", item.referer)
++                if (offset > 0) {
++                    setRequestProperty("Range", "bytes=$offset-")
++                    if (item.etag.isNotEmpty()) setRequestProperty("If-Range", item.etag)
++                }
++            }
++            transfer.connection = connection
++            val code = connection.responseCode
++            if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
++                error("HTTP $code")
++            }
++            val rangeStart = connection.getHeaderField("Content-Range")
++                ?.substringAfter("bytes ")?.substringBefore('-')?.toLongOrNull()
++            val append = code == HttpURLConnection.HTTP_PARTIAL && rangeStart == offset
++            if (code == HttpURLConnection.HTTP_PARTIAL && !append) error("Unexpected Content-Range")
++            val startBytes = if (append) offset else 0L
++            val total = connection.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
++                ?: connection.contentLengthLong.takeIf { it >= 0 }?.plus(startBytes) ?: -1L
++            synchronized(lock) {
++                items[id]?.let {
++                    items[id] = it.copy(bytes = startBytes, total = total,
++                        etag = connection.getHeaderField("ETag").orEmpty(),
++                        modified = System.currentTimeMillis())
++                    save()
++                }
++            }
++            connection.inputStream.use { input ->
++                FileOutputStream(file, append).use { output ->
++                    val buffer = ByteArray(64 * 1024)
++                    var downloaded = startBytes
++                    while (!transfer.stopped) {
++                        val count = input.read(buffer)
++                        if (count < 0) break
++                        output.write(buffer, 0, count)
++                        downloaded += count
++                        val now = System.currentTimeMillis()
++                        if (now - lastSaved > 500) {
++                            synchronized(lock) {
++                                items[id]?.let { items[id] = it.copy(bytes = downloaded, modified = now); save() }
++                            }
++                            lastSaved = now
++                        }
++                    }
++                    if (transfer.stopped) return
++                }
++            }
++            if (total >= 0 && file.length() != total) error("Incomplete response")
++            if (transfer.stopped) return
++            val saved = synchronized(lock) { items[id] } ?: return
++            val uri = publish(file, saved)
++            synchronized(lock) {
++                if (items[id] == null || transfer.stopped) {
++                    app.contentResolver.delete(uri, null, null)
++                } else {
++                    items[id] = saved.copy(status = COMPLETE, bytes = file.length(),
++                        total = file.length(), uri = uri.toString(), modified = System.currentTimeMillis())
++                    save()
++                    file.delete()
++                }
++            }
++        } catch (error: Exception) {
++            if (!transfer.stopped) {
++                Log.w("KBrowserDownload", "Transfer failed id=$id", error)
++                synchronized(lock) {
++                    items[id]?.let {
++                        items[id] = it.copy(status = FAILED, bytes = partial(id).length(),
++                            modified = System.currentTimeMillis())
++                        save()
++                    }
++                }
++            }
++        } finally {
++            transfer.connection?.disconnect()
++            synchronized(lock) { if (active[id] === transfer) active.remove(id) }
++            transfer.done.countDown()
++        }
++    }
++
++    private fun publish(file: File, item: Item): Uri {
++        require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { "MediaStore Downloads requires Android 10" }
++        val resolver = app.contentResolver
++        val values = ContentValues().apply {
++            put(MediaStore.Downloads.DISPLAY_NAME, item.title)
++            put(MediaStore.Downloads.MIME_TYPE, item.mime.ifBlank { "application/octet-stream" })
++            put(MediaStore.Downloads.RELATIVE_PATH,
++                Environment.DIRECTORY_DOWNLOADS + "/KEMIBrowser/")
++            put(MediaStore.Downloads.IS_PENDING, 1)
++        }
++        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
++            ?: error("Unable to create download")
++        try {
++            resolver.openOutputStream(uri, "w")?.use { output -> file.inputStream().use { it.copyTo(output) } }
++                ?: error("Unable to write download")
++            resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
++            return uri
++        } catch (error: Exception) {
++            resolver.delete(uri, null, null)
++            throw error
++        }
++    }
++}
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 5612a6c..57524d3 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -27,6 +27,7 @@ import android.util.Log
+ import android.util.TypedValue
+ import android.text.format.Formatter
+ import android.webkit.URLUtil
++import android.webkit.MimeTypeMap
+ import android.view.Display
+ import android.view.Gravity
+ import android.view.InputDevice
+@@ -68,6 +69,7 @@ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.withContext
+ import java.lang.ref.WeakReference
++import java.util.Locale
+ 
+ private class GeckoInputSurface(context: Context) : SurfaceView(context) {
+     init {
+@@ -554,6 +556,10 @@ open class DualScreenBrowserActivity : Activity() {
+     @Deprecated("Deprecated in Android")
+     override fun onBackPressed() {
+         if (dismissKeyboardForBack()) return
++        if (DualScreenCoordinator.openingExternalViewer()) {
++            DualScreenCoordinator.cancelExternalViewer()
++            return
++        }
+         if (hasRecentMouseActivity()) {
+             showMouseContextMenu(lastMouseX, lastMouseY)
+         } else {
+@@ -598,7 +604,9 @@ open class DualScreenBrowserActivity : Activity() {
+         // Starting the paired Activity on the other display is an internal task transition, not
+         // a user exit. Some vehicle ROMs emit onUserLeaveHint for it; exiting here would tear down
+         // the just-created pair and look like a launch crash.
+-        if (!launchingPeerDisplay) DualScreenCoordinator.exitAll()
++        if (!launchingPeerDisplay && !DualScreenCoordinator.openingExternalViewer()) {
++            DualScreenCoordinator.exitAll()
++        }
+     }
+ 
+     internal fun finishFromPair() {
+@@ -1081,6 +1089,16 @@ open class DualScreenBrowserActivity : Activity() {
+             background = selectableBackground(Color.WHITE)
+         }
+         header.addView(refresh)
++        val close = TextView(this).apply {
++            text = "✕"
++            contentDescription = getString(R.string.kbrowser_downloads_close)
++            textSize = 22f
++            gravity = Gravity.CENTER
++            setTextColor(Color.rgb(63, 80, 105))
++            setPadding(dp(16), dp(8), dp(8), dp(8))
++            background = selectableBackground(Color.WHITE)
++        }
++        header.addView(close)
+         root.addView(header)
+         val count = TextView(this).apply {
+             textSize = 14f
+@@ -1097,42 +1115,57 @@ open class DualScreenBrowserActivity : Activity() {
+             setTextColor(Color.rgb(101, 119, 145))
+             setPadding(0, dp(10), 0, 0)
+         })
+-        val dialog = AlertDialog.Builder(this)
+-            .setView(root)
+-            .setPositiveButton(getString(R.string.kbrowser_downloads_close), null)
+-            .create()
++        val dialog = AlertDialog.Builder(this).setView(root).create()
++        close.setOnClickListener { dialog.dismiss() }
+         refresh.setOnClickListener { populateDownloads(dialog, items, count) }
++        val updateHandler = Handler(Looper.getMainLooper())
++        val update = object : Runnable {
++            override fun run() {
++                if (!dialog.isShowing) return
++                populateDownloads(dialog, items, count)
++                updateHandler.postDelayed(this, 1000L)
++            }
++        }
+         dialog.setOnShowListener {
+             dialog.window?.apply {
+                 setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                 setLayout(minOf(dp(860), (resources.displayMetrics.widthPixels * 0.88f).toInt()),
+                     WindowManager.LayoutParams.WRAP_CONTENT)
+             }
+-            populateDownloads(dialog, items, count)
++            update.run()
+         }
++        dialog.setOnDismissListener { updateHandler.removeCallbacks(update) }
+         dialog.show()
+     }
+ 
+     private data class DownloadListItem(
++        val id: Long,
+         val title: String,
++        val mimeType: String?,
+         val status: Int,
+         val downloaded: Long,
+         val total: Long,
+         val modified: Long,
++        val managed: Boolean = false,
++        val uri: String = "",
+     )
+ 
+     private fun queryDownloads(): List<DownloadListItem> {
+         val manager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+         val rows = mutableListOf<DownloadListItem>()
+         manager.query(DownloadManager.Query())?.use { cursor ->
++            val idColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)
+             val titleColumn = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
++            val mimeColumn = cursor.getColumnIndex(DownloadManager.COLUMN_MEDIA_TYPE)
+             val statusColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
+             val downloadedColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+             val totalColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+             val modifiedColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LAST_MODIFIED_TIMESTAMP)
+             while (cursor.moveToNext()) {
+                 rows.add(DownloadListItem(
++                    id = cursor.getLong(idColumn),
+                     title = if (titleColumn >= 0) cursor.getString(titleColumn).orEmpty() else "",
++                    mimeType = if (mimeColumn >= 0) cursor.getString(mimeColumn) else null,
+                     status = cursor.getInt(statusColumn),
+                     downloaded = cursor.getLong(downloadedColumn),
+                     total = cursor.getLong(totalColumn),
+@@ -1140,12 +1173,19 @@ open class DualScreenBrowserActivity : Activity() {
+                 ))
+             }
+         }
++        rows += BrowserDownloads.list(this).map { item ->
++            DownloadListItem(item.id, item.title, item.mime, when (item.status) {
++                BrowserDownloads.RUNNING -> DownloadManager.STATUS_RUNNING
++                BrowserDownloads.PAUSED -> DownloadManager.STATUS_PAUSED
++                BrowserDownloads.COMPLETE -> DownloadManager.STATUS_SUCCESSFUL
++                else -> DownloadManager.STATUS_FAILED
++            }, item.bytes, item.total, item.modified, managed = true, uri = item.uri)
++        }
+         return rows.sortedByDescending { it.modified }.take(100)
+     }
+ 
+     private fun populateDownloads(dialog: AlertDialog, items: LinearLayout, count: TextView) {
+-        items.removeAllViews()
+-        count.text = getString(R.string.kbrowser_downloads_loading)
++        if (items.childCount == 0) count.text = getString(R.string.kbrowser_downloads_loading)
+         CoroutineScope(Dispatchers.Main).launch {
+             val result = withContext(Dispatchers.IO) { runCatching { queryDownloads() } }
+             if (!dialog.isShowing || isFinishing || isDestroyed) return@launch
+@@ -1187,6 +1227,74 @@ open class DualScreenBrowserActivity : Activity() {
+                                 setTextColor(Color.rgb(101, 119, 145))
+                                 setPadding(0, dp(5), 0, 0)
+                             })
++                            if (item.status == DownloadManager.STATUS_RUNNING ||
++                                item.status == DownloadManager.STATUS_PENDING ||
++                                item.status == DownloadManager.STATUS_PAUSED
++                            ) {
++                                addView(ProgressBar(this@DualScreenBrowserActivity, null,
++                                    android.R.attr.progressBarStyleHorizontal).apply {
++                                    isIndeterminate = item.total <= 0
++                                    if (item.total > 0) {
++                                        max = 100
++                                        progress = (item.downloaded.coerceAtLeast(0) * 100 / item.total)
++                                            .coerceIn(0, 100).toInt()
++                                    }
++                                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
++                                    dp(6)).apply { topMargin = dp(10) })
++                            }
++                            if (item.status == DownloadManager.STATUS_SUCCESSFUL) {
++                                isClickable = true
++                                isFocusable = true
++                                setOnClickListener { openDownloadedFile(item, dialog) }
++                                addView(TextView(this@DualScreenBrowserActivity).apply {
++                                    text = getString(R.string.kbrowser_downloads_open)
++                                    textSize = 13f
++                                    setTextColor(Color.rgb(30, 112, 232))
++                                    setPadding(0, dp(7), 0, 0)
++                                })
++                            }
++                            val actions = LinearLayout(this@DualScreenBrowserActivity).apply {
++                                orientation = LinearLayout.HORIZONTAL
++                                gravity = Gravity.END
++                            }
++                            fun action(label: String, onClick: () -> Unit) {
++                                actions.addView(TextView(this@DualScreenBrowserActivity).apply {
++                                    text = label
++                                    textSize = 15f
++                                    gravity = Gravity.CENTER
++                                    setTextColor(Color.rgb(30, 112, 232))
++                                    setPadding(dp(14), dp(9), dp(14), dp(9))
++                                    background = selectableBackground(Color.WHITE)
++                                    setOnClickListener { onClick() }
++                                })
++                            }
++                            if (item.managed && item.status == DownloadManager.STATUS_RUNNING) {
++                                action(getString(R.string.kbrowser_downloads_pause)) {
++                                    BrowserDownloads.pause(this@DualScreenBrowserActivity, item.id)
++                                    populateDownloads(dialog, items, count)
++                                }
++                            } else if (item.managed && (item.status == DownloadManager.STATUS_PAUSED ||
++                                    item.status == DownloadManager.STATUS_FAILED)) {
++                                action(getString(R.string.kbrowser_downloads_resume)) {
++                                    BrowserDownloads.resume(this@DualScreenBrowserActivity, item.id)
++                                    populateDownloads(dialog, items, count)
++                                }
++                            }
++                            action(getString(R.string.kbrowser_downloads_delete)) {
++                                AlertDialog.Builder(this@DualScreenBrowserActivity)
++                                    .setMessage(getString(R.string.kbrowser_downloads_delete_confirm, item.title))
++                                    .setNegativeButton(android.R.string.cancel, null)
++                                    .setPositiveButton(R.string.kbrowser_downloads_delete) { _, _ ->
++                                        CoroutineScope(Dispatchers.Main).launch {
++                                            withContext(Dispatchers.IO) {
++                                                if (item.managed) BrowserDownloads.delete(applicationContext, item.id)
++                                                else (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).remove(item.id)
++                                            }
++                                            if (dialog.isShowing) populateDownloads(dialog, items, count)
++                                        }
++                                    }.show()
++                            }
++                            addView(actions)
+                         }
+                         items.addView(card, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                             LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+@@ -1210,6 +1318,59 @@ open class DualScreenBrowserActivity : Activity() {
+         setPadding(dp(20), dp(72), dp(20), dp(72))
+     }
+ 
++    private fun openDownloadedFile(item: DownloadListItem, dialog: AlertDialog) {
++        val uri = if (item.managed) item.uri.takeIf { it.isNotBlank() }?.let(Uri::parse)
++            else (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
++                .getUriForDownloadedFile(item.id)
++        if (uri == null) {
++            Toast.makeText(this, getString(R.string.kbrowser_downloads_missing), Toast.LENGTH_SHORT).show()
++            return
++        }
++        val extension = item.title.substringAfterLast('.', "").lowercase(Locale.ROOT)
++        val mime = item.mimeType?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
++            ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
++            ?: "application/octet-stream"
++        val internalDocument = extension in setOf("txt", "text", "log", "md", "markdown", "csv", "tsv",
++            "json", "jsonl", "ndjson", "geojson", "xml", "html", "htm", "xhtml", "rtf",
++            "docx", "docm", "dotx", "dotm", "xlsx", "xlsm", "xltx", "xltm",
++            "pptx", "pptm", "potx", "potm", "odt", "ods", "odp", "epub")
++        if (internalDocument) {
++            CoroutineScope(Dispatchers.Main).launch {
++                val result = withContext(Dispatchers.IO) {
++                    runCatching {
++                        DocumentReader.prepare(applicationContext, Intent(Intent.ACTION_VIEW).apply {
++                            setDataAndType(uri, mime)
++                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
++                        })
++                    }
++                }
++                result.onSuccess { document ->
++                    dialog.dismiss()
++                    DualScreenCoordinator.openPreparedDocument(this@DualScreenBrowserActivity,
++                        document.cachePath)
++                }.onFailure {
++                    Log.w("KBrowserDownload", "Unable to open download id=${item.id}", it)
++                    Toast.makeText(this@DualScreenBrowserActivity,
++                        getString(R.string.kbrowser_downloads_open_failed), Toast.LENGTH_SHORT).show()
++                }
++            }
++            return
++        }
++        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
++            setDataAndType(uri, mime)
++            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
++        }
++        DualScreenCoordinator.expectExternalViewer()
++        runCatching { startActivity(Intent.createChooser(viewIntent,
++            getString(R.string.kbrowser_downloads_open_with))) }.onFailure {
++            DualScreenCoordinator.cancelExternalViewer()
++            Log.w("KBrowserDownload", "No viewer for download id=${item.id}", it)
++            Toast.makeText(this, getString(R.string.kbrowser_downloads_open_failed), Toast.LENGTH_SHORT).show()
++        }.onSuccess {
++            dialog.dismiss()
++        }
++    }
++
+     /** Enqueues a link with the system DownloadManager so direct file links work on both modes. */
+     internal fun downloadUrl(url: String, contentDisposition: String? = null, mimeType: String? = null) {
+         if (!url.startsWith("http://") && !url.startsWith("https://")) {
+@@ -1218,6 +1379,20 @@ open class DualScreenBrowserActivity : Activity() {
+         }
+         val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+             .substringAfterLast('/').substringAfterLast('\\').ifBlank { "kemi-download" }
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
++            runCatching {
++                BrowserDownloads.enqueue(applicationContext, url, fileName, mimeType,
++                    DualScreenCoordinator.currentUrl())
++            }.onSuccess {
++                Toast.makeText(this,
++                    getString(R.string.kbrowser_download_queued, getString(R.string.kbrowser_download_folder), fileName),
++                    Toast.LENGTH_LONG).show()
++            }.onFailure {
++                Log.w("KBrowserDownload", "Unable to enqueue download url=$url", it)
++                Toast.makeText(this, getString(R.string.kbrowser_download_failed), Toast.LENGTH_SHORT).show()
++            }
++            return
++        }
+         val request = DownloadManager.Request(android.net.Uri.parse(url)).apply {
+             setTitle(fileName)
+             mimeType?.takeIf { it.isNotBlank() }?.let(::setMimeType)
+@@ -1378,6 +1553,17 @@ class SingleScreenBrowserActivity : DualScreenBrowserActivity() {
+ 
+ private object DualScreenCoordinator {
+     private val mainHandler = Handler(Looper.getMainLooper())
++    @Volatile private var externalViewerOpen = false
++
++    fun expectExternalViewer() {
++        externalViewerOpen = true
++    }
++
++    fun cancelExternalViewer() {
++        externalViewerOpen = false
++    }
++
++    fun openingExternalViewer(): Boolean = externalViewerOpen
+     private var controller = WeakReference<DualScreenBrowserActivity>(null)
+     private var topDisplay = WeakReference<DualScreenBrowserActivity>(null)
+     private var session: GeckoSession? = null
+@@ -1396,6 +1582,11 @@ private object DualScreenCoordinator {
+     @Synchronized
+     fun currentUrl(): String = currentUrl
+ 
++    @Synchronized
++    fun openPreparedDocument(activity: DualScreenBrowserActivity, path: String) {
++        session?.let { loadDocument(activity, it, path, currentUrl) }
++    }
++
+     @Synchronized
+     fun selectedText(): String? = selectedText
+ 
+diff --git a/app/src/main/res/values-zh-rCN/kbrowser_strings.xml b/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
+index eb5c5fc..e2359e7 100644
+--- a/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
+@@ -86,9 +86,17 @@
+     <string name="kbrowser_bookmarks_delete_failed">删除失败，请重试</string>
+ 
+     <string name="kbrowser_downloads_empty">当前没有可查看的下载</string>
+-    <string name="kbrowser_downloads_title">下载记录</string>
++    <string name="kbrowser_downloads_title">下载</string>
+     <string name="kbrowser_downloads_refresh">刷新</string>
+     <string name="kbrowser_downloads_close">关闭</string>
++    <string name="kbrowser_downloads_open">点击打开</string>
++    <string name="kbrowser_downloads_open_with">选择打开方式</string>
++    <string name="kbrowser_downloads_missing">文件已不存在</string>
++    <string name="kbrowser_downloads_open_failed">无法打开文件</string>
++    <string name="kbrowser_downloads_pause">暂停</string>
++    <string name="kbrowser_downloads_resume">继续</string>
++    <string name="kbrowser_downloads_delete">删除</string>
++    <string name="kbrowser_downloads_delete_confirm">删除“%1$s”及其已下载文件？</string>
+     <string name="kbrowser_downloads_location">文件保存在 Download/%1$s；点按刷新可更新进度。</string>
+     <string name="kbrowser_downloads_loading">正在读取下载记录…</string>
+     <string name="kbrowser_downloads_count">共 %1$d 个下载</string>
+diff --git a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+index a03f568..2922548 100644
+--- a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+@@ -86,9 +86,17 @@
+     <string name="kbrowser_bookmarks_delete_failed">刪除失敗，請再試一次</string>
+ 
+     <string name="kbrowser_downloads_empty">目前沒有可檢視的下載</string>
+-    <string name="kbrowser_downloads_title">下載記錄</string>
++    <string name="kbrowser_downloads_title">下載</string>
+     <string name="kbrowser_downloads_refresh">重新整理</string>
+     <string name="kbrowser_downloads_close">關閉</string>
++    <string name="kbrowser_downloads_open">點擊開啟</string>
++    <string name="kbrowser_downloads_open_with">選擇開啟方式</string>
++    <string name="kbrowser_downloads_missing">檔案已不存在</string>
++    <string name="kbrowser_downloads_open_failed">無法開啟檔案</string>
++    <string name="kbrowser_downloads_pause">暫停</string>
++    <string name="kbrowser_downloads_resume">繼續</string>
++    <string name="kbrowser_downloads_delete">刪除</string>
++    <string name="kbrowser_downloads_delete_confirm">刪除「%1$s」及已下載的檔案？</string>
+     <string name="kbrowser_downloads_location">檔案儲存在 Download/%1$s；點按重新整理可更新進度。</string>
+     <string name="kbrowser_downloads_loading">正在讀取下載記錄…</string>
+     <string name="kbrowser_downloads_count">共 %1$d 個下載</string>
+diff --git a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+index a03f568..2922548 100644
+--- a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+@@ -86,9 +86,17 @@
+     <string name="kbrowser_bookmarks_delete_failed">刪除失敗，請再試一次</string>
+ 
+     <string name="kbrowser_downloads_empty">目前沒有可檢視的下載</string>
+-    <string name="kbrowser_downloads_title">下載記錄</string>
++    <string name="kbrowser_downloads_title">下載</string>
+     <string name="kbrowser_downloads_refresh">重新整理</string>
+     <string name="kbrowser_downloads_close">關閉</string>
++    <string name="kbrowser_downloads_open">點擊開啟</string>
++    <string name="kbrowser_downloads_open_with">選擇開啟方式</string>
++    <string name="kbrowser_downloads_missing">檔案已不存在</string>
++    <string name="kbrowser_downloads_open_failed">無法開啟檔案</string>
++    <string name="kbrowser_downloads_pause">暫停</string>
++    <string name="kbrowser_downloads_resume">繼續</string>
++    <string name="kbrowser_downloads_delete">刪除</string>
++    <string name="kbrowser_downloads_delete_confirm">刪除「%1$s」及已下載的檔案？</string>
+     <string name="kbrowser_downloads_location">檔案儲存在 Download/%1$s；點按重新整理可更新進度。</string>
+     <string name="kbrowser_downloads_loading">正在讀取下載記錄…</string>
+     <string name="kbrowser_downloads_count">共 %1$d 個下載</string>
+diff --git a/app/src/main/res/values-zh/kbrowser_strings.xml b/app/src/main/res/values-zh/kbrowser_strings.xml
+index eb5c5fc..e2359e7 100644
+--- a/app/src/main/res/values-zh/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh/kbrowser_strings.xml
+@@ -86,9 +86,17 @@
+     <string name="kbrowser_bookmarks_delete_failed">删除失败，请重试</string>
+ 
+     <string name="kbrowser_downloads_empty">当前没有可查看的下载</string>
+-    <string name="kbrowser_downloads_title">下载记录</string>
++    <string name="kbrowser_downloads_title">下载</string>
+     <string name="kbrowser_downloads_refresh">刷新</string>
+     <string name="kbrowser_downloads_close">关闭</string>
++    <string name="kbrowser_downloads_open">点击打开</string>
++    <string name="kbrowser_downloads_open_with">选择打开方式</string>
++    <string name="kbrowser_downloads_missing">文件已不存在</string>
++    <string name="kbrowser_downloads_open_failed">无法打开文件</string>
++    <string name="kbrowser_downloads_pause">暂停</string>
++    <string name="kbrowser_downloads_resume">继续</string>
++    <string name="kbrowser_downloads_delete">删除</string>
++    <string name="kbrowser_downloads_delete_confirm">删除“%1$s”及其已下载文件？</string>
+     <string name="kbrowser_downloads_location">文件保存在 Download/%1$s；点按刷新可更新进度。</string>
+     <string name="kbrowser_downloads_loading">正在读取下载记录…</string>
+     <string name="kbrowser_downloads_count">共 %1$d 个下载</string>
+diff --git a/app/src/main/res/values/kbrowser_strings.xml b/app/src/main/res/values/kbrowser_strings.xml
+index 8ad0541..b7c016b 100644
+--- a/app/src/main/res/values/kbrowser_strings.xml
++++ b/app/src/main/res/values/kbrowser_strings.xml
+@@ -96,6 +96,14 @@
+     <string name="kbrowser_downloads_title">Downloads</string>
+     <string name="kbrowser_downloads_refresh">Refresh</string>
+     <string name="kbrowser_downloads_close">Close</string>
++    <string name="kbrowser_downloads_open">Open file</string>
++    <string name="kbrowser_downloads_open_with">Open with</string>
++    <string name="kbrowser_downloads_missing">File is no longer available</string>
++    <string name="kbrowser_downloads_open_failed">Could not open file</string>
++    <string name="kbrowser_downloads_pause">Pause</string>
++    <string name="kbrowser_downloads_resume">Resume</string>
++    <string name="kbrowser_downloads_delete">Delete</string>
++    <string name="kbrowser_downloads_delete_confirm">Delete %1$s and its downloaded file?</string>
+     <string name="kbrowser_downloads_location">Saved in Download/%1$s. Tap Refresh to update progress.</string>
+     <string name="kbrowser_downloads_loading">Loading downloads…</string>
+     <string name="kbrowser_downloads_count">%1$d downloads</string>

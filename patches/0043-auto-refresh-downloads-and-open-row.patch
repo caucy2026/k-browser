@@ -1,0 +1,140 @@
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+index 57524d3..beb054e 100644
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -1060,7 +1060,6 @@ open class DualScreenBrowserActivity : Activity() {
+ 
+     /** Keeps download history in this Activity, so opening it cannot tear down the display pair. */
+     private fun openDownloads() {
+-        val blue = Color.rgb(30, 112, 232)
+         val root = LinearLayout(this).apply {
+             orientation = LinearLayout.VERTICAL
+             setPadding(dp(20), dp(18), dp(20), dp(18))
+@@ -1080,15 +1079,6 @@ open class DualScreenBrowserActivity : Activity() {
+             setTypeface(typeface, android.graphics.Typeface.BOLD)
+         }
+         header.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+-        val refresh = TextView(this).apply {
+-            text = getString(R.string.kbrowser_downloads_refresh)
+-            textSize = 16f
+-            gravity = Gravity.CENTER
+-            setTextColor(blue)
+-            setPadding(dp(14), dp(10), dp(14), dp(10))
+-            background = selectableBackground(Color.WHITE)
+-        }
+-        header.addView(refresh)
+         val close = TextView(this).apply {
+             text = "✕"
+             contentDescription = getString(R.string.kbrowser_downloads_close)
+@@ -1117,7 +1107,6 @@ open class DualScreenBrowserActivity : Activity() {
+         })
+         val dialog = AlertDialog.Builder(this).setView(root).create()
+         close.setOnClickListener { dialog.dismiss() }
+-        refresh.setOnClickListener { populateDownloads(dialog, items, count) }
+         val updateHandler = Handler(Looper.getMainLooper())
+         val update = object : Runnable {
+             override fun run() {
+@@ -1189,9 +1178,13 @@ open class DualScreenBrowserActivity : Activity() {
+         CoroutineScope(Dispatchers.Main).launch {
+             val result = withContext(Dispatchers.IO) { runCatching { queryDownloads() } }
+             if (!dialog.isShowing || isFinishing || isDestroyed) return@launch
+-            items.removeAllViews()
+             result.onSuccess { downloads ->
+                 count.text = getString(R.string.kbrowser_downloads_count, downloads.size)
++                if (items.tag == downloads) return@onSuccess
++                items.tag = downloads
++                val scroll = items.parent as? ScrollView
++                val previousScrollY = scroll?.scrollY ?: 0
++                items.removeAllViews()
+                 if (downloads.isEmpty()) {
+                     items.addView(downloadMessage(getString(R.string.kbrowser_downloads_empty)))
+                 } else {
+@@ -1246,12 +1239,6 @@ open class DualScreenBrowserActivity : Activity() {
+                                 isClickable = true
+                                 isFocusable = true
+                                 setOnClickListener { openDownloadedFile(item, dialog) }
+-                                addView(TextView(this@DualScreenBrowserActivity).apply {
+-                                    text = getString(R.string.kbrowser_downloads_open)
+-                                    textSize = 13f
+-                                    setTextColor(Color.rgb(30, 112, 232))
+-                                    setPadding(0, dp(7), 0, 0)
+-                                })
+                             }
+                             val actions = LinearLayout(this@DualScreenBrowserActivity).apply {
+                                 orientation = LinearLayout.HORIZONTAL
+@@ -1302,7 +1289,10 @@ open class DualScreenBrowserActivity : Activity() {
+                         })
+                     }
+                 }
++                scroll?.post { scroll.scrollTo(0, previousScrollY) }
+             }.onFailure {
++                items.tag = null
++                items.removeAllViews()
+                 Log.w("KBrowserDownload", "Unable to query downloads", it)
+                 count.text = getString(R.string.kbrowser_downloads_failed_to_load)
+                 items.addView(downloadMessage(getString(R.string.kbrowser_downloads_failed_to_load)))
+diff --git a/app/src/main/res/values-zh-rCN/kbrowser_strings.xml b/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
+index e2359e7..910a8c7 100644
+--- a/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rCN/kbrowser_strings.xml
+@@ -97,7 +97,7 @@
+     <string name="kbrowser_downloads_resume">继续</string>
+     <string name="kbrowser_downloads_delete">删除</string>
+     <string name="kbrowser_downloads_delete_confirm">删除“%1$s”及其已下载文件？</string>
+-    <string name="kbrowser_downloads_location">文件保存在 Download/%1$s；点按刷新可更新进度。</string>
++    <string name="kbrowser_downloads_location">文件保存在 Download/%1$s；进度自动更新。</string>
+     <string name="kbrowser_downloads_loading">正在读取下载记录…</string>
+     <string name="kbrowser_downloads_count">共 %1$d 个下载</string>
+     <string name="kbrowser_downloads_complete">已完成</string>
+diff --git a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+index 2922548..c96b012 100644
+--- a/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rHK/kbrowser_strings.xml
+@@ -97,7 +97,7 @@
+     <string name="kbrowser_downloads_resume">繼續</string>
+     <string name="kbrowser_downloads_delete">刪除</string>
+     <string name="kbrowser_downloads_delete_confirm">刪除「%1$s」及已下載的檔案？</string>
+-    <string name="kbrowser_downloads_location">檔案儲存在 Download/%1$s；點按重新整理可更新進度。</string>
++    <string name="kbrowser_downloads_location">檔案儲存在 Download/%1$s；進度自動更新。</string>
+     <string name="kbrowser_downloads_loading">正在讀取下載記錄…</string>
+     <string name="kbrowser_downloads_count">共 %1$d 個下載</string>
+     <string name="kbrowser_downloads_complete">已完成</string>
+diff --git a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+index 2922548..c96b012 100644
+--- a/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh-rTW/kbrowser_strings.xml
+@@ -97,7 +97,7 @@
+     <string name="kbrowser_downloads_resume">繼續</string>
+     <string name="kbrowser_downloads_delete">刪除</string>
+     <string name="kbrowser_downloads_delete_confirm">刪除「%1$s」及已下載的檔案？</string>
+-    <string name="kbrowser_downloads_location">檔案儲存在 Download/%1$s；點按重新整理可更新進度。</string>
++    <string name="kbrowser_downloads_location">檔案儲存在 Download/%1$s；進度自動更新。</string>
+     <string name="kbrowser_downloads_loading">正在讀取下載記錄…</string>
+     <string name="kbrowser_downloads_count">共 %1$d 個下載</string>
+     <string name="kbrowser_downloads_complete">已完成</string>
+diff --git a/app/src/main/res/values-zh/kbrowser_strings.xml b/app/src/main/res/values-zh/kbrowser_strings.xml
+index e2359e7..910a8c7 100644
+--- a/app/src/main/res/values-zh/kbrowser_strings.xml
++++ b/app/src/main/res/values-zh/kbrowser_strings.xml
+@@ -97,7 +97,7 @@
+     <string name="kbrowser_downloads_resume">继续</string>
+     <string name="kbrowser_downloads_delete">删除</string>
+     <string name="kbrowser_downloads_delete_confirm">删除“%1$s”及其已下载文件？</string>
+-    <string name="kbrowser_downloads_location">文件保存在 Download/%1$s；点按刷新可更新进度。</string>
++    <string name="kbrowser_downloads_location">文件保存在 Download/%1$s；进度自动更新。</string>
+     <string name="kbrowser_downloads_loading">正在读取下载记录…</string>
+     <string name="kbrowser_downloads_count">共 %1$d 个下载</string>
+     <string name="kbrowser_downloads_complete">已完成</string>
+diff --git a/app/src/main/res/values/kbrowser_strings.xml b/app/src/main/res/values/kbrowser_strings.xml
+index b7c016b..258485a 100644
+--- a/app/src/main/res/values/kbrowser_strings.xml
++++ b/app/src/main/res/values/kbrowser_strings.xml
+@@ -104,7 +104,7 @@
+     <string name="kbrowser_downloads_resume">Resume</string>
+     <string name="kbrowser_downloads_delete">Delete</string>
+     <string name="kbrowser_downloads_delete_confirm">Delete %1$s and its downloaded file?</string>
+-    <string name="kbrowser_downloads_location">Saved in Download/%1$s. Tap Refresh to update progress.</string>
++    <string name="kbrowser_downloads_location">Saved in Download/%1$s. Progress updates automatically.</string>
+     <string name="kbrowser_downloads_loading">Loading downloads…</string>
+     <string name="kbrowser_downloads_count">%1$d downloads</string>
+     <string name="kbrowser_downloads_complete">Completed</string>
