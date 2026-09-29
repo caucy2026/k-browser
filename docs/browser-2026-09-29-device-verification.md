@@ -1,6 +1,6 @@
 # KEMI 浏览器 2026-09-29 源码与实机验证
 
-仓库保留固定的 Iceraven 上游子模块和 `patches/series`，不提交已展开的 `browser/` 工作树。当前队列为 0001–0020、0025–0053，共 49 个补丁。测试包为 Android arm64 `forkRelease` 1.0.1（versionCode 101），使用仓库外的用户指定测试证书签名；APK SHA-256 为 `20d6c9dd4735ba89310c6872ebffc640386695efe5ee00559776b97361add346`。APK、证书和密码均不进入 Git。
+仓库保留固定的 Iceraven 上游子模块和 `patches/series`，不提交已展开的 `browser/` 工作树。本轮设备测试所用队列为 0001–0020、0025–0053，共 49 个补丁。测试包为 Android arm64 `forkRelease` 1.0.1（versionCode 101），使用仓库外的用户指定测试证书签名；APK SHA-256 为 `20d6c9dd4735ba89310c6872ebffc640386695efe5ee00559776b97361add346`。APK、证书和密码均不进入 Git。
 
 ## 可复现性
 

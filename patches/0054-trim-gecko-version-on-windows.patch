@@ -1,0 +1,11 @@
+diff --git a/gradle/mozconfig.gradle b/gradle/mozconfig.gradle
+--- a/gradle/mozconfig.gradle
++++ b/gradle/mozconfig.gradle
+@@ -8,6 +8,6 @@
+ 
+ gradle.ext.mozconfig = json
+-gradle.ext.mozconfig.substs.MOZ_APP_VERSION = file("${projectRootDir}/version.txt").getText('utf-8').replaceAll("\n", "")
++gradle.ext.mozconfig.substs.MOZ_APP_VERSION = file("${projectRootDir}/version.txt").getText('utf-8').trim()
+ gradle.ext.mozconfig.substs.MOZ_ANDROID_FAT_AAR_ARCHITECTURES = true
+ gradle.ext.mozconfig.substs.MOZ_UPDATE_CHANNEL = 'release'
+ gradle.ext.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES = true
