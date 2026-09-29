@@ -15,7 +15,11 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 - D2/单屏工具栏提供网页朗读：从 D2 工具栏下方第一条实际可见文字开始、当前行高亮跟随、下一段预取，
   支持暂停、继续和停止；读到屏幕末尾自动平滑滚动，换页或退出立即停止语音。
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
-- 当前可复现补丁入口为 0001–0020 + 0025–0037。
+- 当前可复现补丁入口为 0001–0020 + 0025–0053。
+- 2026-09-29 的 `forkRelease` 设备测试包为 `1.0.1`：下载记录、PDF 优先 KEMI Office、
+  MCJS 游戏与返回、繁体“刷新”、TXT 外部打开等结果见
+  [实机验证记录](docs/browser-2026-09-29-device-verification.md)。该测试包使用仓库外的
+  `debug.keystore` 签名；APK 和签名资产不提交到 GitHub。
 - 当前正式版本为 `1.3.1`，产物为
   `bin/DualScreenBrowser-v1.3.1-arm64-release.apk`；使用 KEMI 统一正式证书签名。
 - 49 种真机样例覆盖常用源码/配置、Markdown、表格、Office/ODF、EPUB/MOBI、RTF、HTML 与 PDF；
