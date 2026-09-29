@@ -3,6 +3,13 @@
 本文记录 KEMI 双屏浏览器相对固定 Iceraven/Fenix 上游的定制内容。可复现源码以
 `build/upstream.env` 指定的上游提交和 `patches/series` 的顺序为准。
 
+## 1.0.2 forkRelease 设备测试包（2026-09-29）
+
+- `versionName=1.0.2`、`versionCode=102`。新增补丁 0054，消除 Windows CRLF 检出时 Gecko 版本号尾部换行造成的依赖解析失败；从 GitHub 全新克隆后 50/50 补丁重放成功，本地 `app:assembleForkRelease` 与 [GitHub Actions #54](https://github.com/caucy2026/k-browser/actions/runs/36544920251) 均构建通过。
+- 使用仓库外的用户指定测试证书签名，16 KiB zipalign 与 APK v2/v3 验签通过；APK SHA-256 为 `7dd068f4f374c8f10fdbe92147703013e44ecdf06317a230c844c7fcf0f26ae3`。设备 `192.168.1.78` 从 1.0.1 覆盖安装至 1.0.2，已安装 APK 哈希一致。
+- 实机通过双屏主页、普通网页及 MCJS 入口返回主页、繁体“刷新”、下载列表关闭与文件打开、PDF 直接进入 KEMI Office、TXT 系统选择器、DOCX 经系统选择器在 KEMI Office 打开；浏览器未因这些操作退出。
+- MCJS 的第三方许可弹窗尚未由使用者确认，本版 3D 世界未验收；实体侧滑、原反馈视频长时间播放、下载暂停/继续与自动刷新过程亦未在本版完成验证。
+
 ## 1.0.1 forkRelease 设备测试包（2026-09-29）
 
 - 补丁队列扩展到 0053：修复工具栏、软键盘、下载记录和下载进度；下载窗口支持自动更新、暂停、继续、删除及点击项目直接打开。

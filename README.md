@@ -16,10 +16,9 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
   支持暂停、继续和停止；读到屏幕末尾自动平滑滚动，换页或退出立即停止语音。
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
 - 当前可复现补丁入口为 0001–0020 + 0025–0054。
-- 2026-09-29 的 `forkRelease` 设备测试包为 `1.0.1`：下载记录、PDF 优先 KEMI Office、
-  MCJS 游戏与返回、繁体“刷新”、TXT 外部打开等结果见
-  [实机验证记录](docs/browser-2026-09-29-device-verification.md)。该测试包使用仓库外的
-  `debug.keystore` 签名；APK 和签名资产不提交到 GitHub。
+- 最新 `forkRelease` 设备测试包为 `1.0.2 (102)`，已在 KEMI Vibe Pads S1 上安装验证；
+  本轮结果见下方更新记录。此前 `1.0.1` 的详细结果见
+  [实机验证记录](docs/browser-2026-09-29-device-verification.md)。测试证书、APK 和密码不提交到 GitHub。
 - 当前正式版本为 `1.3.1`，产物为
   `bin/DualScreenBrowser-v1.3.1-arm64-release.apk`；使用 KEMI 统一正式证书签名。
 - 49 种真机样例覆盖常用源码/配置、Markdown、表格、Office/ODF、EPUB/MOBI、RTF、HTML 与 PDF；
@@ -27,6 +26,21 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
   `docs/document-reader-ten-page-device-report.md`。1.3.1 已完成 49 种×连续10页×D2/D0 的 980 帧矩阵。
 - KEMI 构建不显示 Firefox/Iceraven 注册、首次引导、Pocket/赞助内容或默认浏览器推广；
   Gecko 仅作为开源网页引擎保留。
+
+## 最新更新：1.0.2 设备测试版（2026-09-29）
+
+- 将补丁队列扩展至 0054，修复 Windows 检出上游源码时 Gecko 版本号混入换行符导致的构建失败；
+  从 GitHub 全新克隆后，50 个补丁按序应用，本地 `app:assembleForkRelease` 编译通过，
+  [GitHub Actions 构建](https://github.com/caucy2026/k-browser/actions/runs/36544920251)也通过。
+- 本轮浏览器改动涵盖双屏网页与游戏视口、网页返回主页、繁体导航“刷新”、下载列表与进度、
+  PDF 优先 KEMI Office 打开，以及 TXT 不再由浏览器内置打开。
+- 已在 `192.168.1.78` 的 KEMI Vibe Pads S1（Android 12）安装 `1.0.2 (102)` 并实测：
+  双屏主页、普通网页返回、MCJS 游戏网站入口与返回、下载列表、PDF 直接打开、TXT 系统选择器、
+  DOCX 使用 KEMI Office 打开均通过；浏览器进程保持运行。
+- MCJS 网站的许可弹窗尚待使用者同意，实际进入 3D 世界未在本版验收；实体边缘侧滑、原反馈视频
+  长时间播放，以及本版下载暂停/继续和自动刷新过程也未完成验证。不能将这些项目记为通过。
+- 设备测试 APK 使用仓库外的用户指定测试证书；[CI 预发布包](https://github.com/caucy2026/k-browser/releases/tag/ci-c577868266e92ea5e98077daef303241ad14aa60)
+  使用不同的 CI 测试证书，覆盖安装前须确认签名一致。完整版本记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 从 GitHub 完整本地编译
 
