@@ -1,0 +1,57 @@
+diff --git a/app/build.gradle b/app/build.gradle
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -336,6 +336,6 @@
+             // builds.
+             def versionName = buildType == 'forkRelease' ?
+-                    "1.0.2" :
++                    "1.0.3" :
+                     (buildType == 'nightly' ?
+                     "${Config.nightlyVersionName(project)}" :
+                     "${Config.releaseVersionName(project)}")
+@@ -348,7 +348,7 @@
+                 // channels that never shipped a Fennec build.
+                 def abi = output.filters.find { it.filterType == FilterConfiguration.FilterType.ABI }?.identifier ?: "universal"
+                 def versionCodeOverride = buildType == 'forkRelease' ?
+-                        102 :
++                        103 :
+                         Config.generateFennecVersionCode(abi)
+                 project.logger.debug("versionCode for $abi = $versionCodeOverride")
+                 output.versionName.set(versionName)
+diff --git a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+--- a/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
++++ b/app/src/main/java/org/mozilla/fenix/dualscreen/DualScreenBrowserActivity.kt
+@@ -1312,7 +1312,10 @@
+             ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+             ?: "application/octet-stream"
+         val internalDocument = extension in setOf("text", "log", "md", "markdown",
+             "json", "jsonl", "ndjson", "geojson", "xml", "html", "htm", "xhtml", "epub")
++        val kOfficeDocument = extension in setOf("pdf", "doc", "docx", "docm", "dot", "dotx",
++            "odt", "rtf", "txt", "ppt", "pptx", "pptm", "pps", "ppsx", "pot", "potx",
++            "odp", "xls", "xlsx", "xlsm", "xlt", "xltx", "ods", "csv", "tsv")
+         if (internalDocument) {
+             CoroutineScope(Dispatchers.Main).launch {
+                 val result = withContext(Dispatchers.IO) {
+@@ -1342,14 +1345,19 @@
+         }
+         DualScreenCoordinator.expectExternalViewer()
+         runCatching {
+-            if (extension == "pdf") {
++            if (kOfficeDocument) {
+                 runCatching {
+                     startActivity(Intent(viewIntent).setPackage("com.newlink.kemi.koffice"))
+-                }.getOrElse {
+-                    Log.i("KBrowserDownload", "KOffice unavailable for PDF; showing system picker", it)
++                }.recoverCatching {
++                    if (extension == "pdf") throw it
++                    // Older KEMI Office builds may not advertise every supported text/Office MIME.
++                    startActivity(Intent(viewIntent).setClassName("com.newlink.kemi.koffice",
++                        "org.libreoffice.androidlib.LOActivity"))
++                }.getOrElse {
++                    Log.i("KBrowserDownload", "KOffice unavailable for $extension; showing system picker", it)
+                     startActivity(Intent.createChooser(viewIntent,
+                         getString(R.string.kbrowser_downloads_open_with)))
+                 }
+             } else {
+                 startActivity(viewIntent)
+             }

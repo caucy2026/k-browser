@@ -50,3 +50,4 @@ patches/0051-allow-browser-navigation-from-game.patch
 patches/0052-use-refresh-label-in-traditional-toolbar.patch
 patches/0053-disable-txt-file-opening.patch
 patches/0054-trim-gecko-version-on-windows.patch
+patches/0055-prefer-koffice-for-documents.patch

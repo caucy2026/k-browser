@@ -15,7 +15,8 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 - D2/单屏工具栏提供网页朗读：从 D2 工具栏下方第一条实际可见文字开始、当前行高亮跟随、下一段预取，
   支持暂停、继续和停止；读到屏幕末尾自动平滑滚动，换页或退出立即停止语音。
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
-- 当前可复现补丁入口为 0001–0020 + 0025–0054。
+- 当前可复现补丁入口为 0001–0020 + 0025–0055。
+- 当前源码的 `forkRelease` 为 `1.0.3 (103)`；最新实机验证版本仍为 `1.0.2 (102)`。
 - 最新 `forkRelease` 设备测试包为 `1.0.2 (102)`，已在 KEMI Vibe Pads S1 上安装验证；
   本轮结果见下方更新记录。此前 `1.0.1` 的详细结果见
   [实机验证记录](docs/browser-2026-09-29-device-verification.md)。测试证书、APK 和密码不提交到 GitHub。
@@ -27,7 +28,17 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 - KEMI 构建不显示 Firefox/Iceraven 注册、首次引导、Pocket/赞助内容或默认浏览器推广；
   Gecko 仅作为开源网页引擎保留。
 
-## 最新更新：1.0.2 设备测试版（2026-09-29）
+## 最新更新：1.0.3 文档打开候选版（2026-09-29）
+
+- 下载记录中的 PDF、DOC/DOCX、TXT、PPT/PPTX、XLS/XLSX 及常见 ODF、RTF、CSV 等文档，
+  优先直接交给 KEMI Office；未安装或无法启动时，才显示系统打开方式选择器。
+- 对未声明相应 MIME 关联的 KEMI Office 版本，常见非 PDF 文档还会尝试其文档 Activity，
+  避免 TXT 等格式因系统关联缺失而直接弹选择器。PDF 仍使用原有的专用打开路径。
+- 新增可重放补丁 0055，`forkRelease` 提升至 `1.0.3 (103)`。本地增量构建通过，
+  测试 APK 通过 16 KiB 对齐与 v2/v3 验签。设备 `192.168.1.78` 当前离线，
+  DOC/TXT/PPT 直开及未安装 KEMI Office 的回退路径尚待实机验证。
+
+## 上一版：1.0.2 设备测试版（2026-09-29）
 
 - 将补丁队列扩展至 0054，修复 Windows 检出上游源码时 Gecko 版本号混入换行符导致的构建失败；
   从 GitHub 全新克隆后，50 个补丁按序应用，本地 `app:assembleForkRelease` 编译通过，
