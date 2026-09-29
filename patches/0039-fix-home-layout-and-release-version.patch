@@ -7,7 +7,7 @@ diff --git a/app/build.gradle b/app/build.gradle
              // builds.
 -            def versionName = buildType == 'nightly' ?
 +            def versionName = buildType == 'forkRelease' ?
-+                    "1.0.1" :
++                    "1.0.2" :
 +                    (buildType == 'nightly' ?
                      "${Config.nightlyVersionName(project)}" :
 -                    "${Config.releaseVersionName(project)}"
@@ -20,7 +20,7 @@ diff --git a/app/build.gradle b/app/build.gradle
                  def abi = output.filters.find { it.filterType == FilterConfiguration.FilterType.ABI }?.identifier ?: "universal"
 -                def versionCodeOverride = Config.generateFennecVersionCode(abi)
 +                def versionCodeOverride = buildType == 'forkRelease' ?
-+                        101 :
++                        102 :
 +                        Config.generateFennecVersionCode(abi)
                  project.logger.debug("versionCode for $abi = $versionCodeOverride")
                  output.versionName.set(versionName)
