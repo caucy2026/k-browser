@@ -3,11 +3,11 @@
 本文记录 KEMI 双屏浏览器相对固定 Iceraven/Fenix 上游的定制内容。可复现源码以
 `build/upstream.env` 指定的上游提交和 `patches/series` 的顺序为准。
 
-## 1.0.3 forkRelease 文档打开候选版（2026-09-29）
+## 1.0.3 forkRelease 文档打开设备测试版（2026-09-30）
 
 - 补丁 0055 将下载记录中的 PDF、DOC/DOCX、TXT、PPT/PPTX、XLS/XLSX、ODF、RTF、CSV 等常见文档统一改为 KEMI Office 优先；未安装或无法启动时回退系统打开方式选择器。非 PDF 文档在 KEMI Office 未声明对应 MIME 时，再尝试其文档 Activity。
 - `versionName=1.0.3`、`versionCode=103`。从已重放 0054 的工作树检查并应用新补丁通过；Windows 本地 `app:assembleForkRelease` 增量构建成功（12 分 51 秒，4210 个任务中 38 个执行），APK 16 KiB 对齐、v2/v3 验签通过。测试 APK SHA-256 为 `dbdbf043b04949de21c1fe3427bd207ff0ef8483b70192b82c28c8f2032ded1b`，仍使用仓库外的用户指定测试证书。
-- 设备 `192.168.1.78` 当前离线，1.0.3 尚未安装；DOC/TXT/PPT 直开和回退选择器不得标记为实机通过。
+- KEMI Vibe Pads S1 从 1.0.2 覆盖安装到 1.0.3；设备安装的 `base.apk` SHA-256 与本机测试包一致。DOC、DOCX、TXT、PPT、PPTX、PDF 从下载列表直接由 KEMI Office 打开且显示内容；临时停用 KEMI Office 后，TXT 显示系统打开方式选择窗，随后已恢复 KEMI Office。详见 [1.0.3 实机验证记录](docs/browser-2026-09-30-device-verification.md)。
 
 ## 1.0.2 forkRelease 设备测试包（2026-09-29）
 
