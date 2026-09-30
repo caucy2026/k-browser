@@ -17,10 +17,11 @@ KBrowser 是面向 KEMI 双屏 Android 设备的 Iceraven/Fenix 浏览器移植�
 - 已固定 Iceraven/Fenix 上游提交，本地构建优先，GitHub Actions 用作干净环境回归。
 - 当前可复现补丁入口为 0001–0020 + 0025–0055。
 - 当前源码与最新实机验证的 `forkRelease` 均为 `1.0.3 (103)`。
-- 最新 `forkRelease` 设备测试包已在 KEMI Vibe Pads S1 上安装验证；
-  本轮结果见 [1.0.3 实机验证记录](docs/browser-2026-09-30-device-verification.md)。此前 `1.0.1` 的详细结果见
-  [实机验证记录](docs/browser-2026-09-29-device-verification.md)。测试证书、APK 和密码不提交到 GitHub。
-- 当前正式版本为 `1.3.1`，产物为
+- 最新 `forkRelease` 设备测试包已在 KEMI Vibe Pads S1 上安装验证，
+  结果见 [1.0.3 实机验证记录](docs/browser-2026-09-30-device-verification.md)；
+  此前的测试见 [1.0.1 实机验证记录](docs/browser-2026-09-29-device-verification.md)。
+  测试证书、APK 和密码不提交到 GitHub。
+- 独立的正式发布线当前版本为 `1.3.1`，产物为
   `bin/DualScreenBrowser-v1.3.1-arm64-release.apk`；使用 KEMI 统一正式证书签名。
 - 49 种真机样例覆盖常用源码/配置、Markdown、表格、Office/ODF、EPUB/MOBI、RTF、HTML 与 PDF；
   精确支持边界见 `docs/programmer-document-reader-spec.md`，实测数据见
